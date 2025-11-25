@@ -54,7 +54,7 @@ public class OBDService: ObservableObject, OBDServiceDelegate {
     }
 
     /// The internal ELM327 object responsible for direct adapter interaction.
-    private var elm327: ELM327
+    internal var elm327: ELM327
 
     private var cancellables = Set<AnyCancellable>()
 
@@ -165,30 +165,33 @@ public class OBDService: ObservableObject, OBDServiceDelegate {
 
     var pidList: [OBDCommand] = []
 
-    /// Sends an OBD2 command to the vehicle and returns a publisher with the result.
-    /// - Parameter command: The OBD2 command to send.
-    /// - Returns: A publisher with the measurement result.
-    /// - Throws: Errors that might occur during the request process.
-    public func startContinuousUpdates(_ pids: [OBDCommand], unit: MeasurementUnit = .metric, interval: TimeInterval = 0.3) -> AnyPublisher<[OBDCommand: MeasurementResult], Error> {
-        Timer.publish(every: interval, on: .main, in: .common)
-            .autoconnect()
-            .flatMap { [weak self] _ -> Future<[OBDCommand: MeasurementResult], Error> in
-                Future { promise in
-                    guard let self = self else {
-                        promise(.failure(OBDServiceError.notConnectedToVehicle))
-                        return
-                    }
-                    Task(priority: .userInitiated) {
-                        do {
-                            let results = try await self.requestPIDs(pids, unit: unit)
-                            promise(.success(results))
-                        } catch {
-                            promise(.failure(error))
-                        }
+    /// Starts continuous updates for the PIDs in the `pidList`.
+    ///
+    /// - Parameters:
+    ///   - unit: The measurement unit for the results.
+    ///   - interval: The time interval between updates.
+    /// - Returns: An `AsyncStream` that yields measurement results.
+    public func startContinuousUpdates(unit: MeasurementUnit = .metric, interval: TimeInterval = 0.3) -> AsyncStream<[OBDCommand: MeasurementResult]> {
+        return AsyncStream { continuation in
+            let task = Task(priority: .userInitiated) {
+                while !Task.isCancelled {
+                    do {
+                        let results = try await self.requestPIDs(self.pidList, unit: unit)
+                        continuation.yield(results)
+                        try await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+                    } catch {
+                        // Handle errors appropriately, e.g., log them or yield an error
+                        obdError("Error during continuous updates: \(error.localizedDescription)", category: .connection)
+                        // To stop the stream on error, you could use continuation.finish()
+                        // continuation.finish()
+                        // For now, we just log and continue
                     }
                 }
             }
-            .eraseToAnyPublisher()
+            continuation.onTermination = { @Sendable _ in
+                task.cancel()
+            }
+        }
     }
 
     /// Adds an OBD2 command to the list of commands to be requested.
@@ -206,17 +209,22 @@ public class OBDService: ObservableObject, OBDServiceDelegate {
     /// - Returns: measurement result
     /// - Throws: Errors that might occur during the request process.
     public func requestPIDs(_ commands: [OBDCommand], unit: MeasurementUnit) async throws -> [OBDCommand: MeasurementResult] {
-        let response = try await sendCommandInternal("01" + commands.compactMap { $0.properties.command.dropFirst(2) }.joined(), retries: 10)
+        let commandChunks = commands.chunked(into: 6)
+        var results: [OBDCommand: MeasurementResult] = [:]
 
-        guard let responseData = try elm327.canProtocol?.parse(response).first?.data else { return [:] }
+        for chunk in commandChunks {
+            let pids = chunk.compactMap { $0.properties.command.dropFirst(2) }.joined()
+            let response = try await sendCommandInternal("01" + pids, retries: 10)
+            guard let responseData = try elm327.canProtocol?.parse(response).first?.data else { continue }
 
-        var batchedResponse = BatchedResponse(response: responseData, unit)
+            var batchedResponse = BatchedResponse(response: responseData, unit)
 
-        let results: [OBDCommand: MeasurementResult] = commands.reduce(into: [:]) { result, command in
-            let measurement = batchedResponse.extractValue(command)
-            result[command] = measurement
+            for command in chunk {
+                if let measurement = batchedResponse.extractValue(command) {
+                    results[command] = measurement
+                }
+            }
         }
-
         return results
     }
 
@@ -301,66 +309,15 @@ public class OBDService: ObservableObject, OBDServiceDelegate {
     }
 
     public func scanForPeripherals() async throws {
+        self.isScanning = true
+        defer { self.isScanning = false }
         do {
-            self.isScanning = true
             try await elm327.scanForPeripherals()
-            self.isScanning = false
         } catch {
             throw OBDServiceError.scanFailed(underlyingError: error)
         }
     }
 
-//    public func test() {
-//        if let resourcePath = Bundle.module.resourcePath {
-//               print("Bundle resources path: \(resourcePath)")
-//               let files = try? FileManager.default.contentsOfDirectory(atPath: resourcePath)
-//               print("Files in bundle: \(files ?? [])")
-//           }
-//        // Get the path for the JSON file within the app's bundle
-//        guard let path = Bundle.module.path(forResource: "commands", ofType: "json") else {
-//            print("Error: commands.json file not found in the bundle.")
-//            return
-//        }
-//
-//        // Load the file data
-//        guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else {
-//            print("Error: Unable to load data from commands.json.")
-//            return
-//        }
-//
-//        do {
-//                // Load the JSON
-//                let data = try Data(contentsOf: URL(fileURLWithPath: path))
-//
-//                // Decode the JSON into an array of dictionaries to handle flexible structures
-//                guard var rawCommands = try JSONSerialization.jsonObject(with: data, options: []) as? [[String: Any]] else {
-//                    print("Error: Invalid JSON format.")
-//                    return
-//                }
-//
-//                // Edit the `decoder` field
-//                rawCommands = rawCommands.map { command in
-//                    var updatedCommand = command
-//                    if let decoder = command["decoder"] as? [String: Any], let firstKey = decoder.keys.first {
-//                        updatedCommand["decoder"] = firstKey // Set the first key as the string value
-//                    } else {
-//                        updatedCommand["decoder"] = "none" // Default to "none" if no keys exist
-//                    }
-//                    return updatedCommand
-//                }
-//
-//                // Convert back to JSON data
-//                let updatedData = try JSONSerialization.data(withJSONObject: rawCommands, options: .prettyPrinted)
-//
-//                // Save the updated JSON to a file
-//                let outputPath = FileManager.default.temporaryDirectory.appendingPathComponent("commands_updated.json")
-//                try updatedData.write(to: outputPath)
-//
-//                print("Modified commands.json saved to: \(outputPath.path)")
-//            } catch {
-//                print("Error processing commands.json: \(error)")
-//            }
-//    }
 
 }
 
@@ -389,31 +346,3 @@ public extension MeasurementResult {
 	}
 }
 
-public func getVINInfo(vin: String) async throws -> VINResults {
-    let endpoint = "https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/\(vin)?format=json"
-
-    guard let url = URL(string: endpoint) else {
-        throw URLError(.badURL)
-    }
-
-    let (data, response) = try await URLSession.shared.data(from: url)
-
-    guard (response as? HTTPURLResponse)?.statusCode == 200 else {
-        throw URLError(.badServerResponse)
-    }
-
-    let decoder = JSONDecoder()
-    let decoded = try decoder.decode(VINResults.self, from: data)
-    return decoded
-}
-
-public struct VINResults: Codable {
-    public let Results: [VINInfo]
-}
-
-public struct VINInfo: Codable, Hashable {
-    public let Make: String
-    public let Model: String
-    public let ModelYear: String
-    public let EngineCylinders: String
-}
