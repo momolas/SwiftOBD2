@@ -169,7 +169,9 @@ class ViewModel: ObservableObject {
     var cancellables = Set<AnyCancellable>()
     var requestingPIDs: [OBDCommand] = [.mode1(.rpm)] {
         didSet {
-            addPID(command: requestingPIDs[-1])
+            if let lastPID = requestingPIDs.last {
+                addPID(command: lastPID)
+            }
         }
     }
     
@@ -181,13 +183,11 @@ class ViewModel: ObservableObject {
     let obdService = OBDService(connectionType: .bluetooth)
 
     func startContinousUpdates() {
-        obdService.startContinuousUpdates([.mode1(.rpm)]) // You can add more PIDs
-            .sink { completion in
-                print(completion)
-            } receiveValue: { measurements in
+        Task {
+            for await measurements in obdService.startContinuousUpdates() {
                 self.measurements = measurements
             }
-            .store(in: &cancellables)
+        }
     }
 
     func addPID(command: OBDCommand) {
