@@ -97,9 +97,9 @@ Speed: 65.0
 - [x] Get supported PIDs from the vehicle
 - [x] Clear error codes (DTCs) stored in the vehicle's OBD2 system
 - [x] Connect to an OBD2 adapter via WIFI
-- [ ] Run tests on the OBD2 system
-- [ ] Retrieve vehicle status since DTCs cleared
-- [ ] Add support for custom PIDs
+- [x] Run tests on the OBD2 system
+- [x] Retrieve vehicle status since DTCs cleared
+- [x] Add support for custom PIDs
     
     
 ### Setting Up a Project
