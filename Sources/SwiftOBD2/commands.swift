@@ -34,42 +34,6 @@ public extension DecodeResult {
     }
 }
 
-public struct CommandProperties: Encodable {
-    public let command: String
-    public let description: String
-    let bytes: Int
-    let decoder: Decoders
-    public let live: Bool
-    public let maxValue: Double
-    public let minValue: Double
-
-    public init(_ command: String,
-                _ description: String,
-                _ bytes: Int,
-                _ decoder: Decoders,
-                _ live: Bool = false,
-                maxValue: Double = 100,
-                minValue: Double = 0) {
-        self.command = command
-        self.description = description
-        self.bytes = bytes
-        self.decoder = decoder
-        self.live = live
-        self.maxValue = maxValue
-        self.minValue = minValue
-    }
-
-//    public func decode(data: Data, unit: MeasurementUnit = .metric) -> Result<DecodeResult, DecodeError> {
-//        return decoder.performDecode(data: data.dropFirst(), unit: unit)
-//    }
-
-    func decode(data: Data, unit: MeasurementUnit = .metric) -> Result<DecodeResult, DecodeError> {
-        guard let decoderInstance = decoder.getDecoder() else {
-            return .failure(.unsupportedDecoder)
-        }
-        return decoderInstance.decode(data: data.dropFirst(), unit: unit)
-    }
-}
 
 public enum OBDCommand: Codable, Hashable, Comparable, Identifiable {
     case general(General)
@@ -78,23 +42,26 @@ public enum OBDCommand: Codable, Hashable, Comparable, Identifiable {
     case mode6(Mode6)
     case mode9(Mode9)
     case protocols(Protocols)
+    case custom(PID)
 	
 	public var id: Self { return self }
 
-    public var properties: CommandProperties {
+    public var properties: PID {
         switch self {
         case let .general(command):
-            return command.properties
+            return command
         case let .mode1(command):
-            return command.properties
+            return command
         case let .mode9(command):
-            return command.properties
+            return command
         case let .mode6(command):
-            return command.properties
+            return command
         case let .mode3(command):
-            return command.properties
+            return command
         case let .protocols(command):
-            return command.properties
+            return command
+        case let .custom(pid):
+            return pid
         }
     }
 
@@ -402,20 +369,43 @@ public enum OBDCommand: Codable, Hashable, Comparable, Identifiable {
     }()
 }
 
-extension OBDCommand.General {
-    public var properties: CommandProperties {
+extension OBDCommand.General: PID {
+    public var command: String {
         switch self {
-        case .ATD: return CommandProperties("ATD", "Set to default", 5, .none)
-        case .ATZ: return CommandProperties("ATZ", "Reset", 5, .none)
-        case .ATRV: return CommandProperties("ATRV", "Voltage", 5, .none)
-        case .ATL0: return CommandProperties("ATL0", "Linefeeds Off", 5, .none)
-        case .ATE0: return CommandProperties("ATE0", "Echo Off", 5, .none)
-        case .ATH1: return CommandProperties("ATH1", "Headers On", 5, .none)
-        case .ATH0: return CommandProperties("ATH0", "Headers Off", 5, .none)
-        case .ATAT1: return CommandProperties("ATAT1", "Adaptive Timing On", 5, .none)
-        case .ATSTFF: return CommandProperties("ATSTFF", "Set Time to Fast", 5, .none)
-        case .ATDPN: return CommandProperties("ATDPN", "Describe Protocol Number", 5, .none)
+        case .ATD: return "ATD"
+        case .ATZ: return "ATZ"
+        case .ATRV: return "ATRV"
+        case .ATL0: return "ATL0"
+        case .ATE0: return "ATE0"
+        case .ATH1: return "ATH1"
+        case .ATH0: return "ATH0"
+        case .ATAT1: return "ATAT1"
+        case .ATSTFF: return "ATSTFF"
+        case .ATDPN: return "ATDPN"
         }
+    }
+
+    public var description: String {
+        switch self {
+        case .ATD: return "Set to default"
+        case .ATZ: return "Reset"
+        case .ATRV: return "Voltage"
+        case .ATL0: return "Linefeeds Off"
+        case .ATE0: return "Echo Off"
+        case .ATH1: return "Headers On"
+        case .ATH0: return "Headers Off"
+        case .ATAT1: return "Adaptive Timing On"
+        case .ATSTFF: return "Set Time to Fast"
+        case .ATDPN: return "Describe Protocol Number"
+        }
+    }
+
+    public var bytes: Int {
+        return 5
+    }
+
+    public func decode(data: Data) -> Result<DecodeResult, DecodeError> {
+        return .failure(.unsupportedDecoder)
     }
 }
 
