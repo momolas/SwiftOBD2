@@ -193,8 +193,8 @@ class ELM327 {
 
     // MARK: - Adapter Initialization
 
-    func connectToAdapter(timeout: TimeInterval, peripheral: CBPeripheral? = nil) async throws {
-        try await comm.connectAsync(timeout: timeout, peripheral: peripheral)
+    func connectToAdapter(timeout: TimeInterval, device: Device? = nil) async throws {
+        try await comm.connectAsync(timeout: timeout, device: device)
     }
 
     /// Initializes the adapter by sending a series of commands.
@@ -286,8 +286,26 @@ class ELM327 {
         _ = try await sendCommand(command.properties.command)
     }
 
-    func scanForPeripherals() async throws {
-        try await comm.scanForPeripherals()
+    func scanForPeripherals() -> AsyncStream<Device> {
+        return comm.scanForPeripherals()
+    }
+
+    func runOBDTests() async throws -> Bool {
+        let command = "07"
+        let response = try await sendCommand(command)
+        guard let messages = try canProtocol?.parse(response) else {
+            return false
+        }
+        return !messages.isEmpty
+    }
+
+    func getStatusSinceDTCCleared() async throws -> DecodeResult {
+        let command = OBDCommand.mode1(.status)
+        let response = try await sendCommand(command.properties.command)
+        guard let data = try canProtocol?.parse(response).first?.data else {
+            throw DecodeError.noData
+        }
+        return try command.properties.decode(data: data).get()
     }
 
     func runOBDTests() async throws -> Bool {

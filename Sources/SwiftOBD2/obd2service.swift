@@ -8,6 +8,19 @@ public enum ConnectionType: String, CaseIterable {
     case demo = "Demo"
 }
 
+public protocol Device {
+    var id: UUID { get }
+    var name: String { get }
+}
+
+public protocol CommProtocol {
+    var connectionStatePublisher: Published<ConnectionState>.Publisher { get }
+    func connectAsync(timeout: TimeInterval, device: Device?) async throws
+    func sendCommand(_ command: String, retries: Int) async throws -> [String]
+    func disconnectPeripheral()
+    func scanForPeripherals() -> AsyncStream<Device>
+}
+
 struct Command: Codable {
     var bytes: Int
     var command: String
@@ -39,9 +52,14 @@ public class ConfigurationService {
 ///   - Providing information about the vehicle.
 ///   - Managing the connection state.
 public class OBDService: ObservableObject {
+    /// The current state of the connection to the OBD-II adapter.
     @Published public private(set) var connectionState: ConnectionState = .disconnected
+    /// A Boolean value indicating whether the service is currently scanning for peripherals.
     @Published public private(set) var isScanning: Bool = false
+    /// The `CBPeripheral` that is currently connected. `nil` if not connected.
+    /// - Note: This property will be deprecated in a future version in favor of a generic `Device` type.
     @Published public private(set) var connectedPeripheral: CBPeripheral?
+    /// The selected connection type (e.g., Bluetooth, Wi-Fi).
     @Published public var connectionType: ConnectionType {
         didSet {
             switchConnectionType(connectionType)
@@ -54,11 +72,13 @@ public class OBDService: ObservableObject {
 
     private var cancellables = Set<AnyCancellable>()
 
-    /// Initializes the OBDService object.
+    /// Initializes a new instance of `OBDService`.
     ///
-    /// - Parameter connectionType: The desired connection type (default is Bluetooth).
+    /// This initializer sets up the service with the specified connection type.
+    /// In a simulator environment, it defaults to using a mock communicator (`MOCKComm`).
     ///
-    ///
+    /// - Parameter connectionType: The desired method of connecting to the OBD-II adapter (e.g., `.bluetooth`, `.wifi`).
+    /// The default value is `.bluetooth`.
     public init(connectionType: ConnectionType = .bluetooth) {
         self.connectionType = connectionType
 #if targetEnvironment(simulator)
@@ -85,20 +105,20 @@ public class OBDService: ObservableObject {
 
     // MARK: - Connection Handling
 
-    /**
-     Establishes a connection to the OBD-II adapter and initializes the vehicle communication.
-
-     This function performs the following steps:
-     1. Connects to the ELM327 adapter (e.g., via Bluetooth or Wi-Fi).
-     2. Initializes the adapter by sending a standard set of AT commands.
-     3. Detects the correct OBD-II protocol to use for vehicle communication.
-     4. Retrieves initial vehicle information, such as VIN and supported PIDs.
-
-     - Parameter preferredProtocol: An optional `PROTOCOL` to try first. If `nil`, the service will automatically detect the protocol.
-     - Parameter timeout: The maximum time in seconds to wait for the connection to be established.
-     - Returns: An `OBDInfo` object containing details about the vehicle.
-     - Throws: An `OBDServiceError` if the connection fails at any stage.
-     */
+    /// Establishes a connection to the OBD-II adapter and initializes communication with the vehicle.
+    ///
+    /// This asynchronous function orchestrates the entire connection process, including:
+    /// 1. Connecting to the ELM327 adapter.
+    /// 2. Initializing the adapter with a standard set of AT commands.
+    /// 3. Automatically detecting the correct OBD-II protocol for vehicle communication.
+    /// 4. Retrieving essential vehicle information like VIN and supported PIDs.
+    ///
+    /// - Parameters:
+    ///   - preferredProtocol: An optional `PROTOCOL` to attempt first. If `nil` or unsupported, the service
+    ///     will automatically cycle through available protocols.
+    ///   - timeout: The maximum duration (in seconds) to wait for the connection to be established.
+    /// - Returns: An `OBDInfo` object containing key details about the vehicle upon a successful connection.
+    /// - Throws: An `OBDServiceError` if any stage of the connection process fails, containing details about the failure.
     public func startConnection(preferredProtocol: PROTOCOL? = nil, timeout: TimeInterval = 7) async throws -> OBDInfo {
         let startTime = CFAbsoluteTimeGetCurrent()
         obdInfo("Starting connection with timeout: \(timeout)s", category: .connection)
@@ -136,11 +156,9 @@ public class OBDService: ObservableObject {
         return obd2info
     }
 
-    /**
-     Disconnects from the OBD-II adapter.
-
-     This function terminates the communication session and releases any underlying resources.
-     */
+    /// Disconnects from the OBD-II adapter.
+    ///
+    /// This function terminates the communication session and releases any associated resources.
     public func stopConnection() {
         elm327.stopConnection()
     }
@@ -168,7 +186,6 @@ public class OBDService: ObservableObject {
 
     // MARK: - Request Handling
 
-    private var pidList: [OBDCommand] = []
     private let pidListActor = PIDListManager()
 
     /**
@@ -204,36 +221,30 @@ public class OBDService: ObservableObject {
         }
     }
 
-    /**
-     Adds a command to the `pidList` for continuous polling.
-
-     - Parameter pid: The `OBDCommand` to add.
-     */
+    /// Adds a command to the list for continuous polling.
+    ///
+    /// - Parameter pid: The `OBDCommand` to be added to the continuous update stream.
     public func addPID(_ pid: OBDCommand) async {
         await pidListActor.addPID(pid)
     }
 
-    /**
-     Removes a command from the `pidList`.
-
-     - Parameter pid: The `OBDCommand` to remove.
-     */
+    /// Removes a command from the list for continuous polling.
+    ///
+    /// - Parameter pid: The `OBDCommand` to be removed from the continuous update stream.
     public func removePID(_ pid: OBDCommand) async {
         await pidListActor.removePID(pid)
     }
 
-    /**
-     Requests data for a specific list of OBD-II commands.
-
-     This function sends requests for the specified commands and decodes the responses.
-     It automatically handles batching requests to avoid overwhelming the adapter.
-
-     - Parameters:
-       - commands: An array of `OBDCommand` to request from the vehicle.
-       - unit: The desired `MeasurementUnit` for the results.
-     - Returns: A dictionary mapping each `OBDCommand` to its `MeasurementResult`.
-     - Throws: An `OBDServiceError` if the request fails.
-     */
+    /// Requests data for a specific list of OBD-II PIDs.
+    ///
+    /// This function efficiently queries the vehicle for the specified commands. It automatically
+    /// handles batching of requests to optimize communication with the adapter.
+    ///
+    /// - Parameters:
+    ///   - commands: An array of `OBDCommand` to request from the vehicle.
+    ///   - unit: The measurement unit (`.metric` or `.imperial`) for the decoded results.
+    /// - Returns: A dictionary where keys are the requested `OBDCommand`s and values are the corresponding `MeasurementResult`s.
+    /// - Throws: An `OBDServiceError` if the request fails or the response cannot be decoded.
     public func requestPIDs(_ commands: [OBDCommand], unit: MeasurementUnit) async throws -> [OBDCommand: MeasurementResult] {
         let commandChunks = commands.chunked(into: 6)
         var results: [OBDCommand: MeasurementResult] = [:]
@@ -254,13 +265,11 @@ public class OBDService: ObservableObject {
         return results
     }
 
-    /**
-     Sends a single OBD-II command to the vehicle.
-
-     - Parameter command: The `OBDCommand` to send.
-     - Returns: A `DecodeResult` containing the decoded response from the vehicle.
-     - Throws: An `OBDServiceError` if the command fails.
-     */
+    /// Sends a single OBD-II command to the vehicle.
+    ///
+    /// - Parameter command: The `OBDCommand` to be sent.
+    /// - Returns: A `DecodeResult` containing the decoded value from the vehicle's response.
+    /// - Throws: An `OBDServiceError` if the command fails or the response cannot be decoded.
     public func sendCommand(_ command: OBDCommand) async throws -> DecodeResult {
         do {
             let response = try await sendCommandInternal(command.properties.command, retries: 3)
@@ -273,21 +282,20 @@ public class OBDService: ObservableObject {
         }
     }
 
-    /**
-     Retrieves a list of OBD-II PIDs supported by the vehicle.
-
-     - Returns: An array of `OBDCommand` that the vehicle supports.
-     */
+    /// Retrieves a list of OBD-II PIDs supported by the connected vehicle.
+    ///
+    /// - Returns: An array of `OBDCommand` corresponding to the PIDs the vehicle claims to support.
     public func getSupportedPIDs() async -> [OBDCommand] {
         await elm327.getSupportedPIDs()
     }
 
-    /**
-     Scans the vehicle for Diagnostic Trouble Codes (DTCs).
-
-     - Returns: A dictionary where keys are `ECUID`s and values are arrays of `TroubleCode` found for that ECU.
-     - Throws: An `OBDServiceError` if the scan fails.
-     */
+    /// Scans the vehicle for Diagnostic Trouble Codes (DTCs).
+    ///
+    /// This function queries all Electronic Control Units (ECUs) for stored trouble codes.
+    ///
+    /// - Returns: A dictionary where keys are `ECUID`s and values are arrays of `TroubleCode`
+    ///   objects found for that specific ECU.
+    /// - Throws: An `OBDServiceError.scanFailed` error if the DTC scan fails.
     public func scanForTroubleCodes() async throws -> [ECUID: [TroubleCode]] {
         do {
             return try await elm327.scanForTroubleCodes()
@@ -296,12 +304,12 @@ public class OBDService: ObservableObject {
         }
     }
 
-    /**
-     Retrieves the monitor status since the DTCs were last cleared.
-
-     - Returns: A `DecodeResult` containing the status information.
-     - Throws: An error if the request fails.
-     */
+    /// Retrieves the monitor status since the Diagnostic Trouble Codes (DTCs) were last cleared.
+    ///
+    /// This is useful for checking the readiness of emissions-related systems.
+    ///
+    /// - Returns: A `DecodeResult` containing the monitor status information.
+    /// - Throws: An `OBDServiceError` if the request fails.
     public func getStatusSinceDTCCleared() async throws -> DecodeResult {
         do {
             return try await elm327.getStatusSinceDTCCleared()
@@ -310,12 +318,10 @@ public class OBDService: ObservableObject {
         }
     }
 
-    /**
-     Runs OBD system tests (Mode 0x07) to check for pending trouble codes.
-
-     - Returns: `true` if any pending trouble codes are found, otherwise `false`.
-     - Throws: An `OBDServiceError` if the test fails.
-     */
+    /// Runs OBD system tests to check for pending trouble codes (Mode 0x07).
+    ///
+    /// - Returns: `true` if any pending trouble codes are detected, otherwise `false`.
+    /// - Throws: An `OBDServiceError.scanFailed` if the test cannot be completed.
     public func runOBDTests() async throws -> Bool {
         do {
             return try await elm327.runOBDTests()
@@ -324,11 +330,10 @@ public class OBDService: ObservableObject {
         }
     }
 
-    /**
-     Clears all Diagnostic Trouble Codes (DTCs) from the vehicle's ECU.
-
-     - Throws: An `OBDServiceError` if the clear operation fails.
-     */
+    /// Clears all stored Diagnostic Trouble Codes (DTCs) from the vehicle's ECUs.
+    ///
+    /// - Important: This action will reset emission readiness monitors.
+    /// - Throws: An `OBDServiceError.clearFailed` if the operation fails.
     public func clearTroubleCodes() async throws {
         do {
             try await elm327.clearTroubleCodes()
@@ -337,12 +342,12 @@ public class OBDService: ObservableObject {
         }
     }
 
-    /**
-     Retrieves the overall status of the vehicle's onboard systems.
-
-     - Returns: A `DecodeResult` containing the status information.
-     - Throws: An error if the request fails.
-     */
+    /// Retrieves the overall status of the vehicle's onboard systems.
+    ///
+    /// This typically includes information about MIL (Malfunction Indicator Lamp) status and DTC counts.
+    ///
+    /// - Returns: A `DecodeResult` containing the overall vehicle status.
+    /// - Throws: An `OBDServiceError` if the request fails.
     public func getStatus() async throws -> DecodeResult {
         do {
             return try await elm327.getStatus()
@@ -367,44 +372,61 @@ public class OBDService: ObservableObject {
         }
     }
 
-    public func connectToPeripheral(peripheral: CBPeripheral) async throws {
+    /// Connects to a specific OBD-II adapter.
+    ///
+    /// This method is used to establish a connection with a previously discovered device.
+    ///
+    /// - Parameter device: The `Device` to connect to.
+    /// - Throws: An `OBDServiceError.adapterConnectionFailed` if the connection attempt fails.
+    public func connectToDevice(_ device: Device) async throws {
         do {
-            try await elm327.connectToAdapter(timeout: 5, peripheral: peripheral)
+            try await elm327.connectToAdapter(timeout: 5, device: device)
         } catch {
             throw OBDServiceError.adapterConnectionFailed(underlyingError: error)
         }
     }
 
-    public func scanForPeripherals() async throws {
-        self.isScanning = true
-        defer { self.isScanning = false }
-        do {
-            try await elm327.scanForPeripherals()
-        } catch {
-            throw OBDServiceError.scanFailed(underlyingError: error)
-        }
+    /// Scans for nearby OBD-II peripherals.
+    ///
+    /// - Returns: An `AsyncStream` that yields `Device` objects as they are discovered.
+    public func scanForPeripherals() -> AsyncStream<Device> {
+        return elm327.scanForPeripherals()
     }
 
 
 }
 
+/// Represents the errors that can occur within the `OBDService`.
 public enum OBDServiceError: Error {
+    /// No suitable OBD-II adapter was found during a scan.
     case noAdapterFound
+    /// An operation was attempted before a connection to the vehicle was successfully established.
     case notConnectedToVehicle
+    /// The connection attempt to the OBD-II adapter failed.
     case adapterConnectionFailed(underlyingError: Error)
+    /// A scan for Diagnostic Trouble Codes (DTCs) failed.
     case scanFailed(underlyingError: Error)
+    /// An attempt to clear Diagnostic Trouble Codes (DTCs) failed.
     case clearFailed(underlyingError: Error)
+    /// A specific OBD-II command failed to execute.
     case commandFailed(command: String, error: Error)
 }
 
+/// A structure representing the result of a measurement from an OBD-II sensor.
 public struct MeasurementResult: Equatable {
+    /// The numerical value of the measurement.
     public var value: Double
+    /// The unit of measurement (e.g., kPa, °C, km/h).
     public let unit: Unit
-	
-	public init(value: Double, unit: Unit) {
-		self.value = value
-		self.unit = unit
-	}
+
+    /// Initializes a new `MeasurementResult`.
+    /// - Parameters:
+    ///   - value: The numerical value of the measurement.
+    ///   - unit: The unit of the measurement.
+    public init(value: Double, unit: Unit) {
+        self.value = value
+        self.unit = unit
+    }
 }
 
 public extension MeasurementResult {

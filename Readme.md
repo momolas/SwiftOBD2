@@ -42,11 +42,14 @@ let obdService = OBDService(connectionType: .bluetooth)
 let obd2Info = try await obdService.startConnection()
 
 // 3. Get real-time data
-obdService.startContinuousUpdates([.mode1(.rpm), .mode1(.speed)])
-    .sink { measurements in
+Task {
+    await obdService.addPID(.mode1(.rpm))
+    await obdService.addPID(.mode1(.speed))
+    for await measurements in obdService.startContinuousUpdates() {
         print("RPM: \(measurements[.mode1(.rpm)]?.value ?? 0)")
         print("Speed: \(measurements[.mode1(.speed)]?.value ?? 0)")
     }
+}
 ```
 
 **Expected Output:**
@@ -194,7 +197,9 @@ class ViewModel: ObservableObject {
     }
 
     func addPID(command: OBDCommand) {
-        obdService.addPID(command)
+        Task {
+            await obdService.addPID(command)
+        }
     }
 
     func stopContinuousUpdates() {

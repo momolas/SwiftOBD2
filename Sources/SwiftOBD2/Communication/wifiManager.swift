@@ -1,7 +1,6 @@
 import Foundation
 import Combine
 import Network
-import CoreBluetooth
 
 enum WifiError: Error {
     case invalidResponse
@@ -18,7 +17,7 @@ class WifiManager: NSObject, CommProtocol {
     private let host: NWEndpoint.Host = "192.168.0.10"
     private let port: NWEndpoint.Port = 35000
 
-    func connectAsync(timeout: TimeInterval, peripheral: CBPeripheral?) async throws {
+    func connectAsync(timeout: TimeInterval, device: Device?) async throws {
         let endpoint = NWEndpoint.hostPort(host: host, port: port)
         let parameters = NWParameters.tcp
 
@@ -92,7 +91,9 @@ class WifiManager: NSObject, CommProtocol {
         connectionState = .disconnected
     }
 
-    func scanForPeripherals() async throws {
-        // Not applicable for Wi-Fi
+    func scanForPeripherals() -> AsyncStream<Device> {
+        return AsyncStream { continuation in
+            continuation.finish()
+        }
     }
 }

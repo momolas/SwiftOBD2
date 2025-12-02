@@ -56,6 +56,15 @@ enum BLEConstants {
     static let pollingInterval: UInt64 = 100_000_000 // 100ms in nanoseconds
 }
 
+extension CBPeripheral: Device {
+    public var name: String {
+        return self.name ?? "Unknown"
+    }
+    public var id: UUID {
+        return self.identifier
+    }
+}
+
 class BLEManager: NSObject, CommProtocol, BLEPeripheralManagerDelegate, CBCentralManagerDelegate {
     private let peripheralSubject = PassthroughSubject<CBPeripheral, Never>()
     // Replaced with centralized logging - see connectionStateDidChange for usage
@@ -225,7 +234,7 @@ class BLEManager: NSObject, CommProtocol, BLEPeripheralManagerDelegate, CBCentra
 
     // MARK: - Async Methods
 
-    func connectAsync(timeout: TimeInterval, peripheral: CBPeripheral? = nil) async throws {
+    func connectAsync(timeout: TimeInterval, device: Device?) async throws {
         try await waitForPoweredOn()
 
         if connectionState.isConnected {
@@ -234,13 +243,13 @@ class BLEManager: NSObject, CommProtocol, BLEPeripheralManagerDelegate, CBCentra
         }
 
         let targetPeripheral: CBPeripheral
-        if let peripheral = peripheral {
-            targetPeripheral = peripheral
+        if let device = device as? CBPeripheral {
+            targetPeripheral = device
         } else {
             let peripheralStream = scanForPeripherals()
             var firstPeripheral: CBPeripheral?
             for await p in peripheralStream {
-                firstPeripheral = p
+                firstPeripheral = p as? CBPeripheral
                 break
             }
             guard let foundPeripheral = firstPeripheral else {
@@ -324,11 +333,11 @@ class BLEManager: NSObject, CommProtocol, BLEPeripheralManagerDelegate, CBCentra
     }
 
 
-    func scanForPeripherals() -> AsyncStream<CBPeripheral> {
+    func scanForPeripherals() -> AsyncStream<Device> {
         return AsyncStream { continuation in
             let subscription = peripheralScanner.peripheralPublisher
                 .sink { peripheral in
-                    continuation.yield(peripheral)
+                    continuation.yield(peripheral as Device)
                 }
 
             startScanning(BLEPeripheralScanner.supportedServices)
