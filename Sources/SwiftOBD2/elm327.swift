@@ -308,6 +308,24 @@ class ELM327 {
         return try command.properties.decode(data: data).get()
     }
 
+    func runOBDTests() async throws -> Bool {
+        let command = "07"
+        let response = try await sendCommand(command)
+        guard let messages = try canProtocol?.parse(response) else {
+            return false
+        }
+        return !messages.isEmpty
+    }
+
+    func getStatusSinceDTCCleared() async throws -> DecodeResult {
+        let command = OBDCommand.mode1(.status)
+        let response = try await sendCommand(command.properties.command)
+        guard let data = try canProtocol?.parse(response).first?.data else {
+            throw DecodeError.noData
+        }
+        return try command.properties.decode(data: data).get()
+    }
+
     func requestVin() async -> String? {
         let command = OBDCommand.Mode9.VIN
         guard let vinResponse = try? await sendCommand(command.properties.command) else {
