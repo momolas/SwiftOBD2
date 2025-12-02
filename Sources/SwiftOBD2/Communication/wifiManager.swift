@@ -14,8 +14,6 @@ class WifiManager: NSObject, CommProtocol {
     @Published var connectionState: ConnectionState = .disconnected
     var connectionStatePublisher: Published<ConnectionState>.Publisher { $connectionState }
 
-    weak var obdDelegate: OBDServiceDelegate?
-
     private var connection: NWConnection?
     private let host: NWEndpoint.Host = "192.168.0.10"
     private let port: NWEndpoint.Port = 35000
@@ -50,31 +48,42 @@ class WifiManager: NSObject, CommProtocol {
             throw WifiError.connectionFailed(NSError(domain: "WifiManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "Not connected"]))
         }
 
-        let data = (command + "\r").data(using: .utf8)!
+        for _ in 0..<retries {
+            do {
+                let data = (command + "\r").data(using: .utf8)!
 
-        return try await withCheckedThrowingContinuation { continuation in
-            connection.send(content: data, completion: .contentProcessed { error in
-                if let error = error {
-                    continuation.resume(throwing: WifiError.sendFailed(error))
-                    return
+                return try await withCheckedThrowingContinuation { continuation in
+                    connection.send(content: data, completion: .contentProcessed { error in
+                        if let error = error {
+                            continuation.resume(throwing: WifiError.sendFailed(error))
+                            return
+                        }
+                    })
+
+                    connection.receive(minimumIncompleteLength: 1, maximumLength: 4096) { content, _, isComplete, error in
+                        if let error = error {
+                            continuation.resume(throwing: error)
+                            return
+                        }
+
+                        if let content = content, !content.isEmpty {
+                            let responseString = String(data: content, encoding: .utf8) ?? ""
+                            let lines = responseString.components(separatedBy: .newlines).filter { !$0.isEmpty && $0 != ">" }
+                            continuation.resume(returning: lines)
+                        } else if isComplete {
+                            continuation.resume(throwing: WifiError.noData)
+                        }
+                    }
                 }
-            })
-
-            connection.receive(minimumIncompleteLength: 1, maximumLength: 4096) { content, _, isComplete, error in
-                if let error = error {
-                    continuation.resume(throwing: error)
-                    return
-                }
-
-                if let content = content, !content.isEmpty {
-                    let responseString = String(data: content, encoding: .utf8) ?? ""
-                    let lines = responseString.components(separatedBy: .newlines).filter { !$0.isEmpty && $0 != ">" }
-                    continuation.resume(returning: lines)
-                } else if isComplete {
-                    continuation.resume(throwing: WifiError.noData)
+            } catch {
+                if retries > 1 {
+                    try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+                } else {
+                    throw error
                 }
             }
         }
+        throw WifiError.sendFailed(NSError(domain: "WifiManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed after multiple retries"]))
     }
 
     func disconnectPeripheral() {

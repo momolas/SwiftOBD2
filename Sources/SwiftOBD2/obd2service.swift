@@ -168,7 +168,8 @@ public class OBDService: ObservableObject {
 
     // MARK: - Request Handling
 
-    var pidList: [OBDCommand] = []
+    private var pidList: [OBDCommand] = []
+    private let pidListActor = PIDListManager()
 
     /**
      Starts a continuous stream of OBD-II data for the PIDs in the `pidList`.
@@ -181,22 +182,21 @@ public class OBDService: ObservableObject {
        - interval: The polling interval in seconds. Defaults to `0.3` seconds.
      - Returns: An `AsyncStream` that yields dictionaries of `[OBDCommand: MeasurementResult]`.
      */
-    public func startContinuousUpdates(unit: MeasurementUnit = .metric, interval: TimeInterval = 0.3) -> AsyncStream<[OBDCommand: MeasurementResult]> {
-        return AsyncStream { continuation in
+    public func startContinuousUpdates(unit: MeasurementUnit = .metric, interval: TimeInterval = 0.3) -> AsyncThrowingStream<[OBDCommand: MeasurementResult], Error> {
+        return AsyncThrowingStream { continuation in
             let task = Task(priority: .userInitiated) {
                 while !Task.isCancelled {
                     do {
-                        let results = try await self.requestPIDs(self.pidList, unit: unit)
+                        let pids = await pidListActor.getPIDs()
+                        let results = try await self.requestPIDs(pids, unit: unit)
                         continuation.yield(results)
                         try await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
                     } catch {
-                        // Handle errors appropriately, e.g., log them or yield an error
-                        obdError("Error during continuous updates: \(error.localizedDescription)", category: .connection)
-                        // To stop the stream on error, you could use continuation.finish()
-                        // continuation.finish()
-                        // For now, we just log and continue
+                        continuation.finish(throwing: error)
+                        return
                     }
                 }
+                continuation.finish()
             }
             continuation.onTermination = { @Sendable _ in
                 task.cancel()
@@ -209,8 +209,8 @@ public class OBDService: ObservableObject {
 
      - Parameter pid: The `OBDCommand` to add.
      */
-    public func addPID(_ pid: OBDCommand) {
-        pidList.append(pid)
+    public func addPID(_ pid: OBDCommand) async {
+        await pidListActor.addPID(pid)
     }
 
     /**
@@ -218,8 +218,8 @@ public class OBDService: ObservableObject {
 
      - Parameter pid: The `OBDCommand` to remove.
      */
-    public func removePID(_ pid: OBDCommand) {
-        pidList.removeAll { $0 == pid }
+    public func removePID(_ pid: OBDCommand) async {
+        await pidListActor.removePID(pid)
     }
 
     /**
@@ -411,5 +411,21 @@ public extension MeasurementResult {
 	static func mock(_ value: Double = 125, _ suffix: String = "km/h") -> MeasurementResult {
 		.init(value: value, unit: .init(symbol: suffix))
 	}
+}
+
+actor PIDListManager {
+    private var pidList: [OBDCommand] = []
+
+    func getPIDs() -> [OBDCommand] {
+        return pidList
+    }
+
+    func addPID(_ pid: OBDCommand) {
+        pidList.append(pid)
+    }
+
+    func removePID(_ pid: OBDCommand) {
+        pidList.removeAll { $0 == pid }
+    }
 }
 

@@ -13,18 +13,20 @@ final class OBDServiceTests: XCTestCase {
         obdService.elm327 = elm327
     }
 
-    func testAddPID() {
+    func testAddPID() async {
         let pid = OBDCommand.mode1(.rpm)
-        obdService.addPID(pid)
-        XCTAssertEqual(obdService.pidList.count, 1)
-        XCTAssertEqual(obdService.pidList.first, pid)
+        await obdService.addPID(pid)
+        let pids = await obdService.pidListActor.getPIDs()
+        XCTAssertEqual(pids.count, 1)
+        XCTAssertEqual(pids.first, pid)
     }
 
-    func testRemovePID() {
+    func testRemovePID() async {
         let pid = OBDCommand.mode1(.rpm)
-        obdService.addPID(pid)
-        obdService.removePID(pid)
-        XCTAssertTrue(obdService.pidList.isEmpty)
+        await obdService.addPID(pid)
+        await obdService.removePID(pid)
+        let pids = await obdService.pidListActor.getPIDs()
+        XCTAssertTrue(pids.isEmpty)
     }
 
     func testRequestPIDsBatching() async throws {
