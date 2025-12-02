@@ -31,44 +31,14 @@ class BLEPeripheralScanner: ObservableObject {
         CBUUID(string: "18F0"), // e.g. VGate iCar Pro
     ]
 
-    private var foundPeripheralCompletion: ((CBPeripheral?, Error?) -> Void)?
-
     func addDiscoveredPeripheral(_ peripheral: CBPeripheral, advertisementData: [String: Any], rssi: NSNumber) {
         // Filter out peripherals with invalid RSSI
         guard rssi.intValue < 0 else { return }
 
-        if let index = foundPeripherals.firstIndex(where: { $0.identifier == peripheral.identifier }) {
-            foundPeripherals[index] = peripheral
-        } else {
+        if !foundPeripherals.contains(where: { $0.identifier == peripheral.identifier }) {
             foundPeripherals.append(peripheral)
             peripheralSubject.send(peripheral)
             logger.info("Found new peripheral: \(peripheral.name ?? "Unnamed") - RSSI: \(rssi)")
-        }
-
-        // Complete waiting continuation if exists
-        foundPeripheralCompletion?(peripheral, nil)
-        foundPeripheralCompletion = nil // Clear after calling
-    }
-
-    func waitForFirstPeripheral(timeout: TimeInterval) async throws -> CBPeripheral {
-        // If we already have peripherals, return the first one
-        if let first = foundPeripherals.first {
-            return first
-        }
-
-        // Otherwise wait for discovery
-        return try await withTimeout(seconds: timeout, timeoutError: BLEScannerError.scanTimeout) {
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<CBPeripheral, Error>) in
-                self.foundPeripheralCompletion = { peripheral, error in
-                    if let peripheral = peripheral {
-                        continuation.resume(returning: peripheral)
-                    } else if let error = error {
-                        continuation.resume(throwing: error)
-                    } else {
-                        continuation.resume(throwing: BLEScannerError.peripheralNotFound)
-                    }
-                }
-            }
         }
     }
 }

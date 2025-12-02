@@ -96,10 +96,10 @@ Speed: 65.0
 - [x] Retrieve real-time vehicle data (RPM, speed, etc.) using standard OBD2 PIDs
 - [x] Get supported PIDs from the vehicle
 - [x] Clear error codes (DTCs) stored in the vehicle's OBD2 system
-- [ ] Run tests on the OBD2 system
-- [ ] Retrieve vehicle status since DTCs cleared
-- [ ] Connect to an OBD2 adapter via WIFI
-- [ ] Add support for custom PIDs
+- [x] Connect to an OBD2 adapter via WIFI
+- [x] Run tests on the OBD2 system
+- [x] Retrieve vehicle status since DTCs cleared
+- [x] Add support for custom PIDs
     
     
 ### Setting Up a Project
@@ -116,6 +116,9 @@ Speed: 65.0
     * If your app will use Bluetooth, you need to request the appropriate permissions and capabilities:
         * Add NSBluetoothAlwaysUsageDescription to your Info.plist file with a brief description of why your app needs to use Bluetooth.
         * Navigate to the Signing & Capabilities tab in your project settings and add the Background Modes capability. Enable the Uses Bluetooth LE Accessories option.
+    * If your app will use Wi-Fi, you need to add the following key to your Info.plist to allow local network access:
+        * Add `NSLocalNetworkUsageDescription` with a description of why your app needs to access the local network.
+        * Add `NSBonjourServices` as an array and add `_obd2._tcp` and `_obd2._udp` to it.
         
 ### Key Concepts
 
@@ -169,7 +172,9 @@ class ViewModel: ObservableObject {
     var cancellables = Set<AnyCancellable>()
     var requestingPIDs: [OBDCommand] = [.mode1(.rpm)] {
         didSet {
-            addPID(command: requestingPIDs[-1])
+            if let lastPID = requestingPIDs.last {
+                addPID(command: lastPID)
+            }
         }
     }
     
@@ -181,13 +186,11 @@ class ViewModel: ObservableObject {
     let obdService = OBDService(connectionType: .bluetooth)
 
     func startContinousUpdates() {
-        obdService.startContinuousUpdates([.mode1(.rpm)]) // You can add more PIDs
-            .sink { completion in
-                print(completion)
-            } receiveValue: { measurements in
+        Task {
+            for await measurements in obdService.startContinuousUpdates() {
                 self.measurements = measurements
             }
-            .store(in: &cancellables)
+        }
     }
 
     func addPID(command: OBDCommand) {

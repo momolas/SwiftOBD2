@@ -34,42 +34,6 @@ public extension DecodeResult {
     }
 }
 
-public struct CommandProperties: Encodable {
-    public let command: String
-    public let description: String
-    let bytes: Int
-    let decoder: Decoders
-    public let live: Bool
-    public let maxValue: Double
-    public let minValue: Double
-
-    public init(_ command: String,
-                _ description: String,
-                _ bytes: Int,
-                _ decoder: Decoders,
-                _ live: Bool = false,
-                maxValue: Double = 100,
-                minValue: Double = 0) {
-        self.command = command
-        self.description = description
-        self.bytes = bytes
-        self.decoder = decoder
-        self.live = live
-        self.maxValue = maxValue
-        self.minValue = minValue
-    }
-
-//    public func decode(data: Data, unit: MeasurementUnit = .metric) -> Result<DecodeResult, DecodeError> {
-//        return decoder.performDecode(data: data.dropFirst(), unit: unit)
-//    }
-
-    func decode(data: Data, unit: MeasurementUnit = .metric) -> Result<DecodeResult, DecodeError> {
-        guard let decoderInstance = decoder.getDecoder() else {
-            return .failure(.unsupportedDecoder)
-        }
-        return decoderInstance.decode(data: data.dropFirst(), unit: unit)
-    }
-}
 
 public enum OBDCommand: Codable, Hashable, Comparable, Identifiable {
     case general(General)
@@ -78,23 +42,26 @@ public enum OBDCommand: Codable, Hashable, Comparable, Identifiable {
     case mode6(Mode6)
     case mode9(Mode9)
     case protocols(Protocols)
+    case custom(CustomPID)
 	
 	public var id: Self { return self }
 
-    public var properties: CommandProperties {
+    public var properties: PID {
         switch self {
         case let .general(command):
-            return command.properties
+            return command
         case let .mode1(command):
-            return command.properties
+            return command
         case let .mode9(command):
-            return command.properties
+            return command
         case let .mode6(command):
-            return command.properties
+            return command
         case let .mode3(command):
-            return command.properties
+            return command
         case let .protocols(command):
-            return command.properties
+            return command
+        case let .custom(pid):
+            return pid
         }
     }
 
@@ -111,15 +78,30 @@ public enum OBDCommand: Codable, Hashable, Comparable, Identifiable {
         case ATDPN
     }
 
-    public enum Protocols: CaseIterable, Codable, Comparable {
+    public enum Protocols: CaseIterable, Codable, Comparable, PID {
         case ATSP0
         case ATSP6
-        public var properties: CommandProperties {
-            switch self {
-            case .ATSP0: return CommandProperties("ATSP0", "Auto protocol", 0, .none)
-            case .ATSP6: return CommandProperties("ATSP6", "Auto protocol", 0, .none)
 
+        public var command: String {
+            switch self {
+            case .ATSP0: return "ATSP0"
+            case .ATSP6: return "ATSP6"
             }
+        }
+
+        public var description: String {
+            switch self {
+            case .ATSP0: return "Auto protocol"
+            case .ATSP6: return "Auto protocol"
+            }
+        }
+
+        public var bytes: Int {
+            return 0
+        }
+
+        public func decode(data: Data) -> Result<DecodeResult, DecodeError> {
+            return .failure(.unsupportedDecoder)
         }
     }
 
@@ -222,21 +204,51 @@ public enum OBDCommand: Codable, Hashable, Comparable, Identifiable {
         case emissionsReq
     }
 
-    public enum Mode3: CaseIterable, Codable, Comparable {
+    public enum Mode3: CaseIterable, Codable, Comparable, PID {
         case GET_DTC
-        var properties: CommandProperties {
+
+        public var command: String {
             switch self {
-            case .GET_DTC: return CommandProperties("03", "Get DTCs", 0, .dtc)
+            case .GET_DTC: return "03"
             }
+        }
+
+        public var description: String {
+            switch self {
+            case .GET_DTC: return "Get DTCs"
+            }
+        }
+
+        public var bytes: Int {
+            return 0
+        }
+
+        public func decode(data: Data) -> Result<DecodeResult, DecodeError> {
+            return Decoders.dtc.getDecoder()!.decode(data: data)
         }
     }
 
-    public enum Mode4: CaseIterable, Codable, Comparable {
+    public enum Mode4: CaseIterable, Codable, Comparable, PID {
         case CLEAR_DTC
-        var properties: CommandProperties {
+
+        public var command: String {
             switch self {
-            case .CLEAR_DTC: return CommandProperties("04", "Clear DTCs and freeze data", 0, .none)
+            case .CLEAR_DTC: return "04"
             }
+        }
+
+        public var description: String {
+            switch self {
+            case .CLEAR_DTC: return "Clear DTCs and freeze data"
+            }
+        }
+
+        public var bytes: Int {
+            return 0
+        }
+
+        public func decode(data: Data) -> Result<DecodeResult, DecodeError> {
+            return .failure(.unsupportedDecoder)
         }
     }
 
@@ -331,7 +343,7 @@ public enum OBDCommand: Codable, Hashable, Comparable, Identifiable {
         case MONITOR_PM_FILTER_B2
     }
 
-    public enum Mode9: CaseIterable, Codable, Comparable {
+    public enum Mode9: CaseIterable, Codable, Comparable, PID {
         case PIDS_9A
         case VIN_MESSAGE_COUNT
         case VIN
@@ -339,35 +351,75 @@ public enum OBDCommand: Codable, Hashable, Comparable, Identifiable {
         case CALIBRATION_ID
         case CVN_MESSAGE_COUNT
         case CVN
-        var properties: CommandProperties {
+
+        public var command: String {
             switch self {
-            case .PIDS_9A: return CommandProperties("0900", "Supported PIDs [01-20]", 7, .pid)
-            case .VIN_MESSAGE_COUNT: return CommandProperties("0901", "VIN Message Count", 3, .count)
-            case .VIN: return CommandProperties("0902", "Vehicle Identification Number", 22, .encoded_string)
-            case .CALIBRATION_ID_MESSAGE_COUNT: return CommandProperties("0903", "Calibration ID message count for PID 04", 3, .count)
-            case .CALIBRATION_ID: return CommandProperties("0904", "Calibration ID", 18, .encoded_string)
-            case .CVN_MESSAGE_COUNT: return CommandProperties("0905", "CVN Message Count for PID 06", 3, .count)
-            case .CVN: return CommandProperties("0906", "Calibration Verification Numbers", 10, .cvn)
+            case .PIDS_9A: return "0900"
+            case .VIN_MESSAGE_COUNT: return "0901"
+            case .VIN: return "0902"
+            case .CALIBRATION_ID_MESSAGE_COUNT: return "0903"
+            case .CALIBRATION_ID: return "0904"
+            case .CVN_MESSAGE_COUNT: return "0905"
+            case .CVN: return "0906"
             }
+        }
+
+        public var description: String {
+            switch self {
+            case .PIDS_9A: return "Supported PIDs [01-20]"
+            case .VIN_MESSAGE_COUNT: return "VIN Message Count"
+            case .VIN: return "Vehicle Identification Number"
+            case .CALIBRATION_ID_MESSAGE_COUNT: return "Calibration ID message count for PID 04"
+            case .CALIBRATION_ID: return "Calibration ID"
+            case .CVN_MESSAGE_COUNT: return "CVN Message Count for PID 06"
+            case .CVN: return "Calibration Verification Numbers"
+            }
+        }
+
+        public var bytes: Int {
+            switch self {
+            case .PIDS_9A: return 7
+            case .VIN_MESSAGE_COUNT: return 3
+            case .VIN: return 22
+            case .CALIBRATION_ID_MESSAGE_COUNT: return 3
+            case .CALIBRATION_ID: return 18
+            case .CVN_MESSAGE_COUNT: return 3
+            case .CVN: return 10
+            }
+        }
+
+        public func decode(data: Data) -> Result<DecodeResult, DecodeError> {
+            let decoder: Decoders = {
+                switch self {
+                case .PIDS_9A: return .pid
+                case .VIN_MESSAGE_COUNT: return .count
+                case .VIN: return .encoded_string
+                case .CALIBRATION_ID_MESSAGE_COUNT: return .count
+                case .CALIBRATION_ID: return .encoded_string
+                case .CVN_MESSAGE_COUNT: return .count
+                case .CVN: return .cvn
+                }
+            }()
+            return decoder.getDecoder()!.decode(data: data)
         }
     }
 
     static var pidGetters: [OBDCommand] = {
         var getters: [OBDCommand] = []
         for command in OBDCommand.Mode1.allCases {
-            if command.properties.decoder == .pid {
+            if command.decoder == .pid {
                 getters.append(.mode1(command))
             }
         }
 
         for command in OBDCommand.Mode6.allCases {
-            if command.properties.decoder == .pid {
+            if command.decoder == .pid {
                 getters.append(.mode6(command))
             }
         }
 
         for command in OBDCommand.Mode9.allCases {
-            if command.properties.decoder == .pid {
+            if command.decoder == .pid {
                 getters.append(.mode9(command))
             }
         }
@@ -402,20 +454,43 @@ public enum OBDCommand: Codable, Hashable, Comparable, Identifiable {
     }()
 }
 
-extension OBDCommand.General {
-    public var properties: CommandProperties {
+extension OBDCommand.General: PID {
+    public var command: String {
         switch self {
-        case .ATD: return CommandProperties("ATD", "Set to default", 5, .none)
-        case .ATZ: return CommandProperties("ATZ", "Reset", 5, .none)
-        case .ATRV: return CommandProperties("ATRV", "Voltage", 5, .none)
-        case .ATL0: return CommandProperties("ATL0", "Linefeeds Off", 5, .none)
-        case .ATE0: return CommandProperties("ATE0", "Echo Off", 5, .none)
-        case .ATH1: return CommandProperties("ATH1", "Headers On", 5, .none)
-        case .ATH0: return CommandProperties("ATH0", "Headers Off", 5, .none)
-        case .ATAT1: return CommandProperties("ATAT1", "Adaptive Timing On", 5, .none)
-        case .ATSTFF: return CommandProperties("ATSTFF", "Set Time to Fast", 5, .none)
-        case .ATDPN: return CommandProperties("ATDPN", "Describe Protocol Number", 5, .none)
+        case .ATD: return "ATD"
+        case .ATZ: return "ATZ"
+        case .ATRV: return "ATRV"
+        case .ATL0: return "ATL0"
+        case .ATE0: return "ATE0"
+        case .ATH1: return "ATH1"
+        case .ATH0: return "ATH0"
+        case .ATAT1: return "ATAT1"
+        case .ATSTFF: return "ATSTFF"
+        case .ATDPN: return "ATDPN"
         }
+    }
+
+    public var description: String {
+        switch self {
+        case .ATD: return "Set to default"
+        case .ATZ: return "Reset"
+        case .ATRV: return "Voltage"
+        case .ATL0: return "Linefeeds Off"
+        case .ATE0: return "Echo Off"
+        case .ATH1: return "Headers On"
+        case .ATH0: return "Headers Off"
+        case .ATAT1: return "Adaptive Timing On"
+        case .ATSTFF: return "Set Time to Fast"
+        case .ATDPN: return "Describe Protocol Number"
+        }
+    }
+
+    public var bytes: Int {
+        return 5
+    }
+
+    public func decode(data: Data) -> Result<DecodeResult, DecodeError> {
+        return .failure(.unsupportedDecoder)
     }
 }
 
