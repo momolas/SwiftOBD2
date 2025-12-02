@@ -56,7 +56,16 @@ enum BLEConstants {
     static let pollingInterval: UInt64 = 100_000_000 // 100ms in nanoseconds
 }
 
-class BLEManager: NSObject, CommProtocol, BLEPeripheralManagerDelegate {
+extension CBPeripheral: Device {
+    public var name: String {
+        return self.name ?? "Unknown"
+    }
+    public var id: UUID {
+        return self.identifier
+    }
+}
+
+class BLEManager: NSObject, CommProtocol, BLEPeripheralManagerDelegate, CBCentralManagerDelegate {
     private let peripheralSubject = PassthroughSubject<CBPeripheral, Never>()
     // Replaced with centralized logging - see connectionStateDidChange for usage
 
@@ -69,7 +78,6 @@ class BLEManager: NSObject, CommProtocol, BLEPeripheralManagerDelegate {
     var connectionStatePublisher: Published<ConnectionState>.Publisher { $connectionState }
 
 
-    public weak var obdDelegate: OBDServiceDelegate?
 
     // Focused components
     private var centralManager: CBCentralManager!
@@ -157,7 +165,6 @@ class BLEManager: NSObject, CommProtocol, BLEPeripheralManagerDelegate {
         default:
             obdError("Bluetooth in unexpected state: \(central.state.rawValue)", category: .bluetooth)
             connectionState = .error
-            obdDelegate?.connectionStateChanged(state: .error)
         }
     }
 
@@ -181,10 +188,6 @@ class BLEManager: NSObject, CommProtocol, BLEPeripheralManagerDelegate {
         connectionState = .connecting
         OBDLogger.shared.logConnectionChange(from: oldState, to: connectionState)
         
-        DispatchQueue.main.async {
-            self.obdDelegate?.connectionStateChanged(state: .connecting)
-        }
-        
         centralManager.connect(peripheral, options: [CBConnectPeripheralOptionNotifyOnDisconnectionKey: true])
         if centralManager.isScanning {
             centralManager.stopScan()
@@ -205,10 +208,6 @@ class BLEManager: NSObject, CommProtocol, BLEPeripheralManagerDelegate {
         let oldState = connectionState
         connectionState = .error
         OBDLogger.shared.logConnectionChange(from: oldState, to: connectionState)
-        
-        DispatchQueue.main.async {
-            self.obdDelegate?.connectionStateChanged(state: .error)
-        }
     }
 
     func didDisconnect(_: CBCentralManager, peripheral: CBPeripheral, error: Error?) {
@@ -235,7 +234,7 @@ class BLEManager: NSObject, CommProtocol, BLEPeripheralManagerDelegate {
 
     // MARK: - Async Methods
 
-    func connectAsync(timeout: TimeInterval, peripheral: CBPeripheral? = nil) async throws {
+    func connectAsync(timeout: TimeInterval, device: Device?) async throws {
         try await waitForPoweredOn()
 
         if connectionState.isConnected {
@@ -244,11 +243,19 @@ class BLEManager: NSObject, CommProtocol, BLEPeripheralManagerDelegate {
         }
 
         let targetPeripheral: CBPeripheral
-        if let peripheral = peripheral {
-            targetPeripheral = peripheral
+        if let device = device as? CBPeripheral {
+            targetPeripheral = device
         } else {
-            startScanning(BLEPeripheralScanner.supportedServices)
-            targetPeripheral = try await peripheralScanner.waitForFirstPeripheral(timeout: timeout)
+            let peripheralStream = scanForPeripherals()
+            var firstPeripheral: CBPeripheral?
+            for await p in peripheralStream {
+                firstPeripheral = p as? CBPeripheral
+                break
+            }
+            guard let foundPeripheral = firstPeripheral else {
+                throw BLEManagerError.peripheralNotFound
+            }
+            targetPeripheral = foundPeripheral
         }
 
         connect(to: targetPeripheral)
@@ -260,11 +267,6 @@ class BLEManager: NSObject, CommProtocol, BLEPeripheralManagerDelegate {
         let oldState = connectionState
         connectionState = .connectedToAdapter
         OBDLogger.shared.logConnectionChange(from: oldState, to: connectionState)
-        
-        // Dispatch delegate call to main queue since it might update UI
-        DispatchQueue.main.async {
-            self.obdDelegate?.connectionStateChanged(state: .connectedToAdapter)
-        }
         
         obdInfo("Characteristics setup complete, connected to adapter", category: .bluetooth)
     }
@@ -331,10 +333,20 @@ class BLEManager: NSObject, CommProtocol, BLEPeripheralManagerDelegate {
     }
 
 
-    func scanForPeripherals() async throws {
-        startScanning(nil)
-        try await Task.sleep(nanoseconds: UInt64(BLEConstants.scanDuration * 1_000_000_000))
-        stopScan()
+    func scanForPeripherals() -> AsyncStream<Device> {
+        return AsyncStream { continuation in
+            let subscription = peripheralScanner.peripheralPublisher
+                .sink { peripheral in
+                    continuation.yield(peripheral as Device)
+                }
+
+            startScanning(BLEPeripheralScanner.supportedServices)
+
+            continuation.onTermination = { @Sendable _ in
+                self.stopScan()
+                subscription.cancel()
+            }
+        }
     }
 
     private func resetConfigure() {
@@ -344,19 +356,16 @@ class BLEManager: NSObject, CommProtocol, BLEPeripheralManagerDelegate {
         connectionState = .disconnected
         if oldState != connectionState {
             OBDLogger.shared.logConnectionChange(from: oldState, to: connectionState)
-            
-            DispatchQueue.main.async {
-                self.obdDelegate?.connectionStateChanged(state: .disconnected)
-            }
         }
     }
 }
 
-// MARK: - CBCentralManagerDelegate, CBPeripheralDelegate
 
-/// Extension to conform to CBCentralManagerDelegate and CBPeripheralDelegate
-/// and handle the delegate methods.
-extension BLEManager: CBCentralManagerDelegate {
+// MARK: - CBCentralManagerDelegate
+extension BLEManager {
+    func centralManagerDidUpdateState(_ central: CBCentralManager) {
+        didUpdateState(central)
+    }
 
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String: Any], rssi RSSI: NSNumber) {
         didDiscover(central, peripheral: peripheral, advertisementData: advertisementData, rssi: RSSI)
@@ -364,10 +373,6 @@ extension BLEManager: CBCentralManagerDelegate {
 
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
         didConnect(central, peripheral: peripheral)
-    }
-
-    func centralManagerDidUpdateState(_ central: CBCentralManager) {
-        didUpdateState(central)
     }
 
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {

@@ -51,7 +51,6 @@ enum ELM327Error: Error, LocalizedError {
 }
 
 class ELM327 {
-    //    private var obdProtocol: PROTOCOL = .NONE
     var canProtocol: CANProtocol?
 
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.example.com", category: "ELM327")
@@ -59,19 +58,10 @@ class ELM327 {
 
     private var cancellables = Set<AnyCancellable>()
 
-    weak var obdDelegate: OBDServiceDelegate? {
-        didSet {
-            comm.obdDelegate = obdDelegate
-        }
-    }
+    @Published var connectionState: ConnectionState = .disconnected
+    var connectionStatePublisher: Published<ConnectionState>.Publisher { $connectionState }
 
     private var r100: [String] = []
-
-    var connectionState: ConnectionState = .disconnected {
-        didSet {
-            obdDelegate?.connectionStateChanged(state: connectionState)
-        }
-    }
 
     init(comm: CommProtocol) {
         self.comm = comm
@@ -81,18 +71,13 @@ class ELM327 {
     private func setupConnectionStateSubscriber() {
         comm.connectionStatePublisher
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] state in
-                self?.connectionState = state
-                self?.obdDelegate?.connectionStateChanged(state: state)
-                self?.logger.debug("Connection state updated: \(state.hashValue)")
-            }
-            .store(in: &cancellables)
+            .assign(to: &$connectionState)
     }
 
     // MARK: - Adapter and Vehicle Setup
 
     /// Sets up the vehicle connection, including automatic protocol detection.
-    /// - Parameter preferedProtocol: An optional preferred protocol to attempt first.
+    /// - Parameter preferredProtocol: An optional preferred protocol to attempt first.
     /// - Returns: A tuple containing the established OBD protocol and the vehicle's VIN (if available).
     /// - Throws:
     ///     - `SetupError.noECUCharacteristic` if the required OBD characteristic is not found.
@@ -104,19 +89,11 @@ class ELM327 {
     ///     - `SetupError.ignitionOff` if the vehicle's ignition is not on.
     ///     - `SetupError.invalidProtocol` if the protocol is not recognized.
     func setupVehicle(preferredProtocol: PROTOCOL?) async throws -> OBDInfo {
-        //        var obdProtocol: PROTOCOL?
         let detectedProtocol = try await detectProtocol(preferredProtocol: preferredProtocol)
 
-        //        guard let obdProtocol = detectedProtocol else {
-        //            throw SetupError.noProtocolFound
-        //        }
-
-        //        self.obdProtocol = obdProtocol
         canProtocol = protocols[detectedProtocol]
 
         let vin = await requestVin()
-
-        //        try await setHeader(header: "7E0")
 
         let supportedPIDs = await getSupportedPIDs()
 
@@ -216,8 +193,8 @@ class ELM327 {
 
     // MARK: - Adapter Initialization
 
-    func connectToAdapter(timeout: TimeInterval, peripheral: CBPeripheral? = nil) async throws {
-        try await comm.connectAsync(timeout: timeout, peripheral: peripheral)
+    func connectToAdapter(timeout: TimeInterval, device: Device? = nil) async throws {
+        try await comm.connectAsync(timeout: timeout, device: device)
     }
 
     /// Initializes the adapter by sending a series of commands.
@@ -265,15 +242,15 @@ class ELM327 {
         }
     }
 
-    func getStatus() async throws -> Result<DecodeResult, DecodeError> {
+    func getStatus() async throws -> DecodeResult {
         logger.info("Getting status")
         let statusCommand = OBDCommand.Mode1.status
         let statusResponse = try await sendCommand(statusCommand.properties.command)
         logger.debug("Status response: \(statusResponse)")
         guard let statusData = try canProtocol?.parse(statusResponse).first?.data else {
-            return .failure(.noData)
+            throw DecodeError.noData
         }
-        return statusCommand.properties.decode(data: statusData)
+        return try statusCommand.properties.decode(data: statusData).get()
     }
 
     func scanForTroubleCodes() async throws -> [ECUID: [TroubleCode]] {
@@ -309,8 +286,26 @@ class ELM327 {
         _ = try await sendCommand(command.properties.command)
     }
 
-    func scanForPeripherals() async throws {
-        try await comm.scanForPeripherals()
+    func scanForPeripherals() -> AsyncStream<Device> {
+        return comm.scanForPeripherals()
+    }
+
+    func runOBDTests() async throws -> Bool {
+        let command = "07"
+        let response = try await sendCommand(command)
+        guard let messages = try canProtocol?.parse(response) else {
+            return false
+        }
+        return !messages.isEmpty
+    }
+
+    func getStatusSinceDTCCleared() async throws -> DecodeResult {
+        let command = OBDCommand.mode1(.status)
+        let response = try await sendCommand(command.properties.command)
+        guard let data = try canProtocol?.parse(response).first?.data else {
+            throw DecodeError.noData
+        }
+        return try command.properties.decode(data: data).get()
     }
 
     func requestVin() async -> String? {
@@ -505,17 +500,6 @@ enum ECUHeader {
     static let ENGINE = "7E0"
 }
 
-// Possible setup errors
-// enum SetupError: Error {
-//    case noECUCharacteristic
-//    case invalidResponse(message: String)
-//    case noProtocolFound
-//    case adapterInitFailed
-//    case timeout
-//    case peripheralNotFound
-//    case ignitionOff
-//    case invalidProtocol
-// }
 
 public struct OBDInfo: Codable, Hashable {
     public var vin: String?

@@ -23,6 +23,24 @@ final class decodersTests: XCTestCase {
         }
     }
 
+    func testUas() {
+        let tests = [
+            (uas: 0x07, data: Data([0x1A, 0x0B]), expected: MeasurementResult(value: 1680.0, unit: .rpm)),
+            (uas: 0x09, data: Data([0x64]), expected: MeasurementResult(value: 100.0, unit: .kmh)),
+        ]
+
+        for (uas, data, expected) in tests {
+            let decoder = UASDecoder(uas: uas)
+            switch decoder.decode(data: data, unit: .metric) {
+            case let .success(result):
+                XCTAssertEqual(result.measurementResult!.value, expected.value, accuracy: 0.01)
+                XCTAssertEqual(result.measurementResult!.unit.symbol, expected.unit.symbol)
+            case let .failure(error):
+                XCTFail("Unexpected error: \(error)")
+            }
+        }
+    }
+
     func testPercentCentered() {
         let tests = [Data([0x00]): MeasurementResult(value: -100, unit: Unit.percent),
                      Data([0x80]): MeasurementResult(value: 0, unit: Unit.percent),
@@ -114,8 +132,8 @@ final class decodersTests: XCTestCase {
 //
     func testPressure() {
         let tests = [Data([0x00]): MeasurementResult(value: 0, unit: UnitPressure.kilopascals),
-//                     Data([0x80]): MeasurementResult(value: 0.5, unit: UnitPressure.kilopascals),
-//                     Data([0xFF]): MeasurementResult(value: 1, unit: UnitPressure.kilopascals)
+                     Data([0x80]): MeasurementResult(value: 128, unit: UnitPressure.kilopascals),
+                     Data([0xFF]): MeasurementResult(value: 255, unit: UnitPressure.kilopascals)
         ]
         for (data, expected) in tests {
             switch PressureDecoder().decode(data: data, unit: .metric) {

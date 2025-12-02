@@ -1,153 +1,99 @@
-//
-//  wifiManager.swift
-//
-//
-//  Created by kemo konteh on 2/26/24.
-//
-
-import CoreBluetooth
 import Foundation
+import Combine
 import Network
-import OSLog
 
-protocol CommProtocol {
-    func sendCommand(_ command: String, retries: Int) async throws -> [String]
-    func disconnectPeripheral()
-    func connectAsync(timeout: TimeInterval, peripheral: CBPeripheral?) async throws
-    func scanForPeripherals() async throws
-    var connectionStatePublisher: Published<ConnectionState>.Publisher { get }
-    var obdDelegate: OBDServiceDelegate? { get set }
+enum WifiError: Error {
+    case invalidResponse
+    case noData
+    case connectionFailed(Error)
+    case sendFailed(Error)
 }
 
-enum CommunicationError: Error {
-    case invalidData
-    case errorOccurred(Error)
-}
-
-class WifiManager: CommProtocol {
+class WifiManager: NSObject, CommProtocol {
     @Published var connectionState: ConnectionState = .disconnected
-
-    let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.example.app", category: "wifiManager")
-
-    var obdDelegate: OBDServiceDelegate?
-
     var connectionStatePublisher: Published<ConnectionState>.Publisher { $connectionState }
 
-    var tcp: NWConnection?
+    private var connection: NWConnection?
+    private let host: NWEndpoint.Host = "192.168.0.10"
+    private let port: NWEndpoint.Port = 35000
 
-    func connectAsync(timeout _: TimeInterval, peripheral _: CBPeripheral? = nil) async throws {
-        let host = NWEndpoint.Host("192.168.0.10")
-        guard let port = NWEndpoint.Port("35000") else {
-            throw CommunicationError.invalidData
-        }
-        tcp = NWConnection(host: host, port: port, using: .tcp)
+    func connectAsync(timeout: TimeInterval, device: Device?) async throws {
+        let endpoint = NWEndpoint.hostPort(host: host, port: port)
+        let parameters = NWParameters.tcp
 
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            tcp?.stateUpdateHandler = { [weak self] newState in
-                guard let self = self else { return }
-                switch newState {
+        connection = NWConnection(to: endpoint, using: parameters)
+
+        return try await withCheckedThrowingContinuation { continuation in
+            connection?.stateUpdateHandler = { [weak self] state in
+                switch state {
                 case .ready:
-                    self.logger.info("Connected to \(host.debugDescription):\(port.debugDescription)")
-                    self.connectionState = .connectedToAdapter
-                    continuation.resume(returning: ())
-                case let .waiting(error):
-                    self.logger.warning("Connection waiting: \(error.localizedDescription)")
-                case let .failed(error):
-                    self.logger.error("Connection failed: \(error.localizedDescription)")
-                    self.connectionState = .disconnected
-                    continuation.resume(throwing: CommunicationError.errorOccurred(error))
+                    self?.connectionState = .connectedToAdapter
+                    continuation.resume()
+                case .failed(let error):
+                    self?.connectionState = .disconnected
+                    continuation.resume(throwing: WifiError.connectionFailed(error))
+                case .cancelled:
+                    self?.connectionState = .disconnected
                 default:
                     break
                 }
             }
-            tcp?.start(queue: .main)
+            connection?.start(queue: .global())
         }
     }
 
     func sendCommand(_ command: String, retries: Int) async throws -> [String] {
-        guard let data = "\(command)\r".data(using: .ascii) else {
-            throw CommunicationError.invalidData
+        guard let connection = connection else {
+            throw WifiError.connectionFailed(NSError(domain: "WifiManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "Not connected"]))
         }
-        logger.info("Sending: \(command)")
-        return try await sendCommandInternal(data: data, retries: retries)
-    }
 
-    private func sendCommandInternal(data: Data, retries: Int) async throws -> [String] {
-        for attempt in 1 ... retries {
+        for _ in 0..<retries {
             do {
-                let response = try await sendAndReceiveData(data)
-                if let lines = processResponse(response) {
-                    return lines
-                } else if attempt < retries {
-                    logger.info("No data received, retrying attempt \(attempt + 1) of \(retries)...")
-                    try await Task.sleep(nanoseconds: 100_000_000) // 0.5 seconds delay
+                let data = (command + "\r").data(using: .utf8)!
+
+                return try await withCheckedThrowingContinuation { continuation in
+                    connection.send(content: data, completion: .contentProcessed { error in
+                        if let error = error {
+                            continuation.resume(throwing: WifiError.sendFailed(error))
+                            return
+                        }
+                    })
+
+                    connection.receive(minimumIncompleteLength: 1, maximumLength: 4096) { content, _, isComplete, error in
+                        if let error = error {
+                            continuation.resume(throwing: error)
+                            return
+                        }
+
+                        if let content = content, !content.isEmpty {
+                            let responseString = String(data: content, encoding: .utf8) ?? ""
+                            let lines = responseString.components(separatedBy: .newlines).filter { !$0.isEmpty && $0 != ">" }
+                            continuation.resume(returning: lines)
+                        } else if isComplete {
+                            continuation.resume(throwing: WifiError.noData)
+                        }
+                    }
                 }
             } catch {
-                if attempt == retries {
+                if retries > 1 {
+                    try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+                } else {
                     throw error
                 }
-                logger.warning("Attempt \(attempt) failed, retrying: \(error.localizedDescription)")
             }
         }
-        throw CommunicationError.invalidData
-    }
-
-    private func sendAndReceiveData(_ data: Data) async throws -> String {
-        guard let tcpConnection = tcp else {
-             throw CommunicationError.invalidData
-         }
-        let logger = self.logger // Avoid capturing `self` directly
-
-        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<String, Error>) in
-            tcpConnection.send(content: data, completion: .contentProcessed { error in
-                if let error = error {
-                    logger.error("Error sending data: \(error.localizedDescription)")
-                    continuation.resume(throwing: CommunicationError.errorOccurred(error))
-                    return
-                }
-
-                tcpConnection.receive(minimumIncompleteLength: 1, maximumLength: 500) { data, _, _, error in
-                    if let error = error {
-                        logger.error("Error receiving data: \(error.localizedDescription)")
-                        continuation.resume(throwing: CommunicationError.errorOccurred(error))
-                        return
-                    }
-
-                    guard let response = data, let responseString = String(data: response, encoding: .utf8) else {
-                        logger.warning("Received invalid or empty data")
-                        continuation.resume(throwing: CommunicationError.invalidData)
-                        return
-                    }
-
-                    continuation.resume(returning: responseString)
-                }
-            })
-        }
-    }
-
-    private func processResponse(_ response: String) -> [String]? {
-        logger.info("Processing response: \(response)")
-        var lines = response.components(separatedBy: .newlines).filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-
-        guard !lines.isEmpty else {
-            logger.warning("Empty response lines")
-            return nil
-        }
-
-        if lines.last?.contains(">") == true {
-            lines.removeLast()
-        }
-
-        if lines.first?.lowercased() == "no data" {
-            return nil
-        }
-
-        return lines
+        throw WifiError.sendFailed(NSError(domain: "WifiManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed after multiple retries"]))
     }
 
     func disconnectPeripheral() {
-        tcp?.cancel()
+        connection?.cancel()
+        connection = nil
+        connectionState = .disconnected
     }
 
-    func scanForPeripherals() async throws {}
+    func scanForPeripherals() -> AsyncStream<Device> {
+        return AsyncStream { continuation in
+            continuation.finish()
+        }
+    }
 }
