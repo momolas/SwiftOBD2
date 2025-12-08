@@ -89,6 +89,7 @@ public class OBDService: ObservableObject {
             let bleManager = BLEManager()
             elm327 = ELM327(comm: bleManager)
         case .wifi:
+            // Uses default host (192.168.0.10) and port (35000)
             elm327 = ELM327(comm: WifiManager())
         case .demo:
             elm327 = ELM327(comm: MOCKComm())
@@ -177,6 +178,7 @@ public class OBDService: ObservableObject {
             let bleManager = BLEManager()
             elm327 = ELM327(comm: bleManager)
         case .wifi:
+            // Uses default host (192.168.0.10) and port (35000)
             elm327 = ELM327(comm: WifiManager())
         case .demo:
             elm327 = ELM327(comm: MOCKComm())
