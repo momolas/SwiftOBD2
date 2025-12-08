@@ -2,11 +2,24 @@ import Foundation
 import Combine
 import Network
 
-enum WifiError: Error {
+public enum WifiError: Error, LocalizedError {
     case invalidResponse
     case noData
     case connectionFailed(Error)
     case sendFailed(Error)
+
+    public var errorDescription: String? {
+        switch self {
+        case .invalidResponse:
+            return "Invalid response from Wi-Fi adapter."
+        case .noData:
+            return "No data received from Wi-Fi adapter."
+        case .connectionFailed(let error):
+            return "Wi-Fi connection failed: \(error.localizedDescription)"
+        case .sendFailed(let error):
+            return "Failed to send data to Wi-Fi adapter: \(error.localizedDescription)"
+        }
+    }
 }
 
 class WifiManager: NSObject, CommProtocol {
@@ -14,8 +27,13 @@ class WifiManager: NSObject, CommProtocol {
     var connectionStatePublisher: Published<ConnectionState>.Publisher { $connectionState }
 
     private var connection: NWConnection?
-    private let host: NWEndpoint.Host = "192.168.0.10"
-    private let port: NWEndpoint.Port = 35000
+    private let host: NWEndpoint.Host
+    private let port: NWEndpoint.Port
+
+    init(host: String = "192.168.0.10", port: UInt16 = 35000) {
+        self.host = NWEndpoint.Host(host)
+        self.port = NWEndpoint.Port(integerLiteral: port)
+    }
 
     func connectAsync(timeout: TimeInterval, device: Device?) async throws {
         let endpoint = NWEndpoint.hostPort(host: host, port: port)
@@ -47,7 +65,7 @@ class WifiManager: NSObject, CommProtocol {
             throw WifiError.connectionFailed(NSError(domain: "WifiManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "Not connected"]))
         }
 
-        for _ in 0..<retries {
+        for i in 0..<retries {
             do {
                 let data = (command + "\r").data(using: .utf8)!
 
@@ -75,7 +93,7 @@ class WifiManager: NSObject, CommProtocol {
                     }
                 }
             } catch {
-                if retries > 1 {
+                if i < retries - 1 {
                     try await Task.sleep(nanoseconds: 100_000_000) // 100ms
                 } else {
                     throw error

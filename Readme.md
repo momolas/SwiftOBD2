@@ -122,7 +122,11 @@ Speed: 65.0
     * If your app will use Wi-Fi, you need to add the following key to your Info.plist to allow local network access:
         * Add `NSLocalNetworkUsageDescription` with a description of why your app needs to access the local network.
         * Add `NSBonjourServices` as an array and add `_obd2._tcp` and `_obd2._udp` to it.
-        
+
+4. Configuration (Wi-Fi):
+    * The default Wi-Fi settings are Host: `192.168.0.10` and Port: `35000`.
+    * You can customize these settings when initializing the `WifiManager`.
+
 ### Key Concepts
 
 * SwiftUI & Combine: Your code leverages the SwiftUI framework for building the user interface and Combine for reactive handling of updates from the OBDService.
