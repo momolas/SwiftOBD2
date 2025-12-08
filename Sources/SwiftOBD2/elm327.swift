@@ -59,9 +59,20 @@ class ELM327 {
     private var cancellables = Set<AnyCancellable>()
 
     @Published var connectionState: ConnectionState = .disconnected
-    var connectionStatePublisher: Published<ConnectionState>.Publisher { $connectionState }
+    var connectionStateStream: AsyncStream<ConnectionState> {
+        AsyncStream { continuation in
+            let task = Task {
+                for await value in $connectionState.values {
+                    continuation.yield(value)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
 
     private var r100: [String] = []
+
+    private var connectionStateTask: Task<Void, Never>?
 
     init(comm: CommProtocol) {
         self.comm = comm
@@ -69,9 +80,15 @@ class ELM327 {
     }
 
     private func setupConnectionStateSubscriber() {
-        comm.connectionStatePublisher
-            .receive(on: DispatchQueue.main)
-            .assign(to: &$connectionState)
+        connectionStateTask?.cancel()
+        connectionStateTask = Task { [weak self] in
+            guard let self = self else { return }
+            for await state in self.comm.connectionStateStream {
+                await MainActor.run {
+                    self.connectionState = state
+                }
+            }
+        }
     }
 
     // MARK: - Adapter and Vehicle Setup
@@ -140,7 +157,7 @@ class ELM327 {
     /// - Throws: Various setup-related errors.
     private func detectProtocolAutomatically() async throws -> PROTOCOL {
         _ = try await okResponse("ATSP0")
-        try? await Task.sleep(nanoseconds: 1_000_000_000)
+        try? await Task.sleep(for: .seconds(1))
         _ = try await sendCommand("0100")
 
         let obdProtocolNumber = try await sendCommand("ATDPN")

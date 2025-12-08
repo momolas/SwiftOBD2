@@ -24,7 +24,16 @@ public enum WifiError: Error, LocalizedError {
 
 class WifiManager: NSObject, CommProtocol {
     @Published var connectionState: ConnectionState = .disconnected
-    var connectionStatePublisher: Published<ConnectionState>.Publisher { $connectionState }
+    var connectionStateStream: AsyncStream<ConnectionState> {
+        AsyncStream { continuation in
+            let task = Task {
+                for await value in $connectionState.values {
+                    continuation.yield(value)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
 
     private var connection: NWConnection?
     private let host: NWEndpoint.Host
@@ -94,7 +103,7 @@ class WifiManager: NSObject, CommProtocol {
                 }
             } catch {
                 if i < retries - 1 {
-                    try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+                    try await Task.sleep(for: .milliseconds(100))
                 } else {
                     throw error
                 }

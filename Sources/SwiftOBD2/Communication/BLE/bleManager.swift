@@ -75,7 +75,16 @@ class BLEManager: NSObject, CommProtocol, BLEPeripheralManagerDelegate, CBCentra
 
     @Published var connectionState: ConnectionState = .disconnected
 
-    var connectionStatePublisher: Published<ConnectionState>.Publisher { $connectionState }
+    var connectionStateStream: AsyncStream<ConnectionState> {
+        AsyncStream { continuation in
+            let task = Task {
+                for await value in $connectionState.values {
+                    continuation.yield(value)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
 
 
 
@@ -296,7 +305,7 @@ class BLEManager: NSObject, CommProtocol, BLEPeripheralManagerDelegate, CBCentra
                 break
             }
             
-            try await Task.sleep(nanoseconds: BLEConstants.pollingInterval)
+            try await Task.sleep(for: .nanoseconds(Int(BLEConstants.pollingInterval)))
         }
         
         obdDebug("Bluetooth powered on successfully", category: .bluetooth)

@@ -25,13 +25,36 @@ class MOCKComm: CommProtocol {
     let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.example.app", category: "MOCKComm")
 
     @Published var connectionState: ConnectionState = .disconnected
-    var connectionStatePublisher: Published<ConnectionState>.Publisher { $connectionState }
+    var connectionStateStream: AsyncStream<ConnectionState> {
+        AsyncStream { continuation in
+            let task = Task {
+                for await value in $connectionState.values {
+                    continuation.yield(value)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
     var obdDelegate: OBDServiceDelegate?
 
     var ecuSettings: MockECUSettings = .init()
 
+    // Testing helpers
+    var sentCommands: [String] = []
+    private var mockResponses: [String: [String]] = [:]
+
+    func setResponse(for command: String, response: [String]) {
+        mockResponses[command] = response
+    }
+
     func sendCommand(_ command: String, retries: Int = 3) async throws -> [String] {
         logger.info("Sending command: \(command)")
+        sentCommands.append(command)
+
+        if let response = mockResponses[command] {
+            return response
+        }
+
         var header = ""
 
         let prefix = String(command.prefix(2))
