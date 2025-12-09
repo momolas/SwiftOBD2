@@ -24,14 +24,38 @@ struct MockECUSettings {
 class MOCKComm: CommProtocol {
     let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.example.app", category: "MOCKComm")
 
-    @Published var connectionState: ConnectionState = .disconnected
-    var connectionStatePublisher: Published<ConnectionState>.Publisher { $connectionState }
-    var obdDelegate: OBDServiceDelegate?
+    var connectionState: ConnectionState = .disconnected {
+        didSet {
+            continuation?.yield(connectionState)
+        }
+    }
+
+    private var continuation: AsyncStream<ConnectionState>.Continuation?
+    var connectionStateStream: AsyncStream<ConnectionState> {
+        AsyncStream { continuation in
+            self.continuation = continuation
+            continuation.yield(connectionState)
+        }
+    }
 
     var ecuSettings: MockECUSettings = .init()
 
+    // Testing helpers
+    var sentCommands: [String] = []
+    private var mockResponses: [String: [String]] = [:]
+
+    func setResponse(for command: String, response: [String]) {
+        mockResponses[command] = response
+    }
+
     func sendCommand(_ command: String, retries: Int = 3) async throws -> [String] {
         logger.info("Sending command: \(command)")
+        sentCommands.append(command)
+
+        if let response = mockResponses[command] {
+            return response
+        }
+
         var header = ""
 
         let prefix = String(command.prefix(2))
@@ -180,7 +204,6 @@ class MOCKComm: CommProtocol {
 
     func disconnectPeripheral() {
         connectionState = .disconnected
-        obdDelegate?.connectionStateChanged(state: .disconnected)
     }
 
     func connectAsync(timeout: TimeInterval, device: Device? = nil) async throws {
