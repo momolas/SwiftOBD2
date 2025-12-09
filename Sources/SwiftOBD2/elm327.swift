@@ -13,7 +13,6 @@
 /// * Retrieves vehicle information (e.g., VIN)
 /// * Monitors vehicle status and retrieves diagnostic trouble codes (DTCs)
 
-import Combine
 import CoreBluetooth
 import Foundation
 import OSLog
@@ -56,17 +55,17 @@ class ELM327 {
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.example.com", category: "ELM327")
     private var comm: CommProtocol
 
-    private var cancellables = Set<AnyCancellable>()
+    var connectionState: ConnectionState = .disconnected {
+        didSet {
+            continuation?.yield(connectionState)
+        }
+    }
 
-    @Published var connectionState: ConnectionState = .disconnected
+    private var continuation: AsyncStream<ConnectionState>.Continuation?
     var connectionStateStream: AsyncStream<ConnectionState> {
         AsyncStream { continuation in
-            let task = Task {
-                for await value in $connectionState.values {
-                    continuation.yield(value)
-                }
-            }
-            continuation.onTermination = { _ in task.cancel() }
+            self.continuation = continuation
+            continuation.yield(connectionState)
         }
     }
 

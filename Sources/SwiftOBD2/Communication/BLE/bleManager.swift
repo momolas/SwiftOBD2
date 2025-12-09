@@ -14,7 +14,6 @@
 /// - Parsing the received messages
 /// - Handling errors
 
-import Combine
 import CoreBluetooth
 import Foundation
 
@@ -66,23 +65,23 @@ extension CBPeripheral: Device {
 }
 
 class BLEManager: NSObject, CommProtocol, BLEPeripheralManagerDelegate, CBCentralManagerDelegate {
-    private let peripheralSubject = PassthroughSubject<CBPeripheral, Never>()
     // Replaced with centralized logging - see connectionStateDidChange for usage
 
     static let RestoreIdentifierKey: String = "OBD2Adapter"
 
     // MARK: Properties
 
-    @Published var connectionState: ConnectionState = .disconnected
+    var connectionState: ConnectionState = .disconnected {
+        didSet {
+            continuation?.yield(connectionState)
+        }
+    }
 
+    private var continuation: AsyncStream<ConnectionState>.Continuation?
     var connectionStateStream: AsyncStream<ConnectionState> {
         AsyncStream { continuation in
-            let task = Task {
-                for await value in $connectionState.values {
-                    continuation.yield(value)
-                }
-            }
-            continuation.onTermination = { _ in task.cancel() }
+            self.continuation = continuation
+            continuation.yield(connectionState)
         }
     }
 
@@ -95,11 +94,8 @@ class BLEManager: NSObject, CommProtocol, BLEPeripheralManagerDelegate, CBCentra
     private var peripheralManager: BLEPeripheralManager!
     private var peripheralScanner: BLEPeripheralScanner!
 
-    private var cancellables = Set<AnyCancellable>()
-    
     deinit {
         // Clean up resources
-        cancellables.removeAll()
         disconnectPeripheral()
         obdDebug("BLEManager deinitialized", category: .bluetooth)
     }
@@ -344,16 +340,17 @@ class BLEManager: NSObject, CommProtocol, BLEPeripheralManagerDelegate, CBCentra
 
     func scanForPeripherals() -> AsyncStream<Device> {
         return AsyncStream { continuation in
-            let subscription = peripheralScanner.peripheralPublisher
-                .sink { peripheral in
+            let task = Task {
+                for await peripheral in peripheralScanner.peripheralStream {
                     continuation.yield(peripheral as Device)
                 }
+            }
 
             startScanning(BLEPeripheralScanner.supportedServices)
 
             continuation.onTermination = { @Sendable _ in
                 self.stopScan()
-                subscription.cancel()
+                task.cancel()
             }
         }
     }

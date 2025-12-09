@@ -1,5 +1,4 @@
 import Foundation
-import Combine
 import Network
 
 public enum WifiError: Error, LocalizedError {
@@ -23,15 +22,17 @@ public enum WifiError: Error, LocalizedError {
 }
 
 class WifiManager: NSObject, CommProtocol {
-    @Published var connectionState: ConnectionState = .disconnected
+    var connectionState: ConnectionState = .disconnected {
+        didSet {
+            continuation?.yield(connectionState)
+        }
+    }
+
+    private var continuation: AsyncStream<ConnectionState>.Continuation?
     var connectionStateStream: AsyncStream<ConnectionState> {
         AsyncStream { continuation in
-            let task = Task {
-                for await value in $connectionState.values {
-                    continuation.yield(value)
-                }
-            }
-            continuation.onTermination = { _ in task.cancel() }
+            self.continuation = continuation
+            continuation.yield(connectionState)
         }
     }
 
