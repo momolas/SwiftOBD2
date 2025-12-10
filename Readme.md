@@ -79,8 +79,10 @@ Speed: 65.0
     * Can get a list of supported PIDs from the vehicle.
     
 * Diagnostics:
-    * Retrieves and clears diagnostic trouble codes (DTCs).
+    * Retrieves and clears diagnostic trouble codes (DTCs) (confirmed, pending, permanent).
     * Gets the overall status of the vehicle's onboard systems.
+    * Retrieves Freeze Frame data.
+    * Retrieves Vehicle Information (VIN, Calibration ID, CVN).
     
 * Sensor Monitoring:
     * Retrieve and view data from various vehicle sensors in real time.
@@ -102,6 +104,10 @@ Speed: 65.0
 - [x] Run tests on the OBD2 system
 - [x] Retrieve vehicle status since DTCs cleared
 - [x] Add support for custom PIDs
+- [x] Retrieve Permanent DTCs (Mode 0A)
+- [x] Retrieve Pending DTCs (Mode 07)
+- [x] Retrieve Vehicle Information (VIN, CALID, CVN) (Mode 09)
+- [x] Retrieve Freeze Frame Data (Mode 02)
     
     
 ### Setting Up a Project
@@ -161,6 +167,13 @@ import Observation
     
 6. Retrieving Information
     * Use the OBDService's methods to retrieve data from the vehicle.
+        * `scanForTroubleCodes()`: Retrieve confirmed DTCs.
+        * `scanForPendingTroubleCodes()`: Retrieve pending DTCs.
+        * `scanForPermanentTroubleCodes()`: Retrieve permanent DTCs.
+        * `getStatus()`: Retrieves Status since DTCs cleared.
+        * `getVehicleCalibrationID()`: Retrieves Calibration ID.
+        * `getCVN()`: Retrieves Calibration Verification Number.
+        * `getFreezeFrame(for:)`: Retrieves freeze frame data.
 
 7. Continuous Updates
     * Use the startContinuousUpdates method to continuously poll and retrieve updated measurements from the vehicle via an `AsyncStream`.
@@ -224,6 +237,17 @@ class ViewModel {
     func getTroubleCodes() async {
         let troubleCodes = try? await obdService.scanForTroubleCodes()
         print(troubleCodes ?? "nil")
+    }
+
+    func getPendingCodes() async {
+        let codes = try? await obdService.scanForPendingTroubleCodes()
+        print(codes ?? "nil")
+    }
+
+    func getVehicleInfo() async {
+        let calid = try? await obdService.getVehicleCalibrationID()
+        let cvn = try? await obdService.getCVN()
+        print("CALID: \(calid ?? "nil"), CVN: \(cvn ?? "nil")")
     }
 }
 
