@@ -64,7 +64,7 @@ extension CBPeripheral: Device {
     }
 }
 
-class BLEManager: NSObject, CommProtocol, BLEPeripheralManagerDelegate, CBCentralManagerDelegate {
+class BLEManager: NSObject, CommProtocol, BLEPeripheralManagerDelegate, CBCentralManagerDelegate, @unchecked Sendable {
     // Replaced with centralized logging - see connectionStateDidChange for usage
 
     static let RestoreIdentifierKey: String = "OBD2Adapter"

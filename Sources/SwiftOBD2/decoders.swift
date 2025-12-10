@@ -145,7 +145,11 @@ func twosComp(_ value: Int, length: Int) -> Int {
     return value & mask
 }
 
-private var uasIDS: [UInt8: UAS] = {
+func bytesToInt(_ data: Data) -> Int {
+    return data.reduce(0) { $0 * 256 + Int($1) }
+}
+
+private let uasIDS: [UInt8: UAS] = {
     return [
     // Unsigned
     0x01: UAS(signed: false, scale: 1.0, unit: Unit.count),

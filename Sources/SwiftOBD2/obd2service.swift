@@ -21,8 +21,8 @@ public protocol CommProtocol {
     func scanForPeripherals() -> AsyncStream<Device>
 }
 
-public class ConfigurationService {
-    static var shared = ConfigurationService()
+public final class ConfigurationService: Sendable {
+    static let shared = ConfigurationService()
     var connectionType: ConnectionType {
         get {
             let rawValue = UserDefaults.standard.string(forKey: "connectionType") ?? "Bluetooth"
@@ -128,7 +128,7 @@ public class OBDService {
             try await elm327.adapterInitialization()
             
             obdDebug("Initializing vehicle connection...", category: .connection)
-            let vehicleInfo = try await initializeVehicle(preferedProtocol)
+            let vehicleInfo = try await initializeVehicle(preferredProtocol)
 
             let duration = CFAbsoluteTimeGetCurrent() - startTime
             OBDLogger.shared.logPerformance("Connection established", duration: duration, success: true)

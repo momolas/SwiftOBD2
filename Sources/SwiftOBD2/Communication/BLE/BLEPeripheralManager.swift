@@ -7,7 +7,7 @@ protocol BLEPeripheralManagerDelegate: AnyObject {
     func peripheralManager(_ manager: BLEPeripheralManager, didSetupCharacteristics peripheral: CBPeripheral)
 }
 
-class BLEPeripheralManager: NSObject, ObservableObject {
+class BLEPeripheralManager: NSObject, ObservableObject, @unchecked Sendable {
     func didWriteValue(_ peripheral: CBPeripheral, descriptor: CBDescriptor, error: (any Error)?) {
 
     }
