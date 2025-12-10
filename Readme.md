@@ -60,9 +60,8 @@ Speed: 65.0
 
 ### Requirements
 
-- iOS 14.0+ / macOS 11.0+
-- Xcode 13.0+
-- Swift 5.0+
+- iOS 26.0+ / macOS 16.0+
+- Swift 6.2+
 
 ### Key Features
 
@@ -80,8 +79,13 @@ Speed: 65.0
     * Can get a list of supported PIDs from the vehicle.
     
 * Diagnostics:
-    * Retrieves and clears diagnostic trouble codes (DTCs).
+    * Retrieves and clears diagnostic trouble codes (DTCs) (confirmed, pending, permanent).
     * Gets the overall status of the vehicle's onboard systems.
+    * Retrieves Freeze Frame data.
+    * Retrieves Vehicle Information (VIN, Calibration ID, CVN).
+    * **Full VIN Decoding** (Make, Year, Country, Region).
+    * **On-Board System Control** (Mode 08) including EVAP Leak Test.
+    * **O2 Sensor Monitoring** (Mode 05).
     
 * Sensor Monitoring:
     * Retrieve and view data from various vehicle sensors in real time.
@@ -103,6 +107,13 @@ Speed: 65.0
 - [x] Run tests on the OBD2 system
 - [x] Retrieve vehicle status since DTCs cleared
 - [x] Add support for custom PIDs
+- [x] Retrieve Permanent DTCs (Mode 0A)
+- [x] Retrieve Pending DTCs (Mode 07)
+- [x] Retrieve Vehicle Information (VIN, CALID, CVN) (Mode 09)
+- [x] Retrieve Freeze Frame Data (Mode 02)
+- [x] On-Board System Control (Mode 08)
+- [x] O2 Sensor Monitoring (Mode 05)
+- [x] Full VIN Decoding
     
     
 ### Setting Up a Project
@@ -129,9 +140,8 @@ Speed: 65.0
 
 ### Key Concepts
 
-* SwiftUI & Combine: Your code leverages the SwiftUI framework for building the user interface and Combine for reactive handling of updates from the OBDService.
+* SwiftUI & Observation: Your code leverages the SwiftUI framework and the Observation framework for reactive UI updates.
 * OBDService: This is the core class within the SwiftOBD2 package. It handles communication with the OBD-II adapter and processes data from the vehicle.
-* OBDServiceDelegate: This protocol is crucial for receiving updates about the connection state and other events from the OBDService.
 * OBDCommand: These represent specific requests you can make to the vehicle's ECU (Engine Control Unit) for data.
 
 ### Usage
@@ -143,40 +153,45 @@ Speed: 65.0
 ```Swift
 import SwiftUI
 import SwiftOBD2
-import Combine
+import Observation
 ```
 
 2. ViewModel
-    * Create a ViewModel class that conforms to the ObservableObject protocol. This allows your SwiftUI views to observe changes in the ViewModel.
+    * Create a ViewModel class annotated with `@Observable`.
     * Inside the ViewModel:
-        * Define a @Published property measurements to store the collected data.
-        * Initialize an OBDService instance, setting the desired connection type (e.g., Bluetooth, Wi-Fi).
+        * Define properties for `measurements` and `connectionState`.
+        * Initialize an OBDService instance.
 
 3. Connection Handling
-    * Implement the connectionStateChanged method from the OBDServiceDelegate protocol. Update the UI based on connection state changes (disconnected, connected, etc.) or handle any necessary logic.
+    * Observe `obdService.connectionState` directly.
     
 4. Starting the Connection
-    * Create a startConnection function (ideally using async/await) to initiate the connection process with the OBD-II adapter. The OBDService's startConnection method will return useful OBDInfo about the vehicle. Like the Supported PIDs, Protocol, etc.
+    * Create a startConnection function to initiate the connection process with the OBD-II adapter.
     
 5. Stopping the Connection
     * Create a stopConnection function to cleanly disconnect the service.
     
 6. Retrieving Information
-    * Use the OBDService's methods to retrieve data from the vehicle, such as getting the vehicle's status, scanning for trouble codes, or requesting specific PIDs.
-        * getTroubleCodes: Retrieve diagnostic trouble codes (DTCs) from the vehicle's OBD-II system.
-        * getStatus: Retrieves Status since DTCs cleared.
+    * Use the OBDService's methods to retrieve data from the vehicle.
+        * `scanForTroubleCodes()`: Retrieve confirmed DTCs.
+        * `scanForPendingTroubleCodes()`: Retrieve pending DTCs.
+        * `scanForPermanentTroubleCodes()`: Retrieve permanent DTCs.
+        * `getStatus()`: Retrieves Status since DTCs cleared.
+        * `getVehicleCalibrationID()`: Retrieves Calibration ID.
+        * `getCVN()`: Retrieves Calibration Verification Number.
+        * `getDecodedVIN()`: Retrieves and decodes the VIN.
+        * `getFreezeFrame(for:)`: Retrieves freeze frame data.
+        * `startEvapLeakTest()`: Initiates EVAP Leak Test (Mode 08).
 
 7. Continuous Updates
-    * Use the startContinuousUpdates method to continuously poll and retrieve updated measurements from the vehicle. This method returns a Combine publisher that you can subscribe to for updates.
-    * Can also add PIDs to the continuous updates using the addPID method.
+    * Use the startContinuousUpdates method to continuously poll and retrieve updated measurements from the vehicle via an `AsyncStream`.
     
 ### Code Example
 ```Swift
-class ViewModel: ObservableObject {
-    @Published var measurements: [OBDCommand: MeasurementResult] = [:]
-    @Published var connectionState: ConnectionState = .disconnected
+@Observable
+class ViewModel {
+    var measurements: [OBDCommand: MeasurementResult] = [:]
 
-    var cancellables = Set<AnyCancellable>()
     var requestingPIDs: [OBDCommand] = [.mode1(.rpm)] {
         didSet {
             if let lastPID = requestingPIDs.last {
@@ -185,12 +200,11 @@ class ViewModel: ObservableObject {
         }
     }
     
-    init() {
-        obdService.$connectionState
-            .assign(to: &$connectionState)
-    }
-
     let obdService = OBDService(connectionType: .bluetooth)
+
+    var connectionState: ConnectionState {
+        obdService.connectionState
+    }
 
     func startContinousUpdates() {
         Task {
@@ -207,11 +221,11 @@ class ViewModel: ObservableObject {
     }
 
     func stopContinuousUpdates() {
-        cancellables.removeAll()
+        // Task cancellation logic if needed
     }
 
     func startConnection() async throws  {
-        let obd2info = try await obdService.startConnection(preferedProtocol: .protocol6)
+        let obd2info = try await obdService.startConnection(preferredProtocol: .protocol6)
         print(obd2info)
     }
 
@@ -232,13 +246,31 @@ class ViewModel: ObservableObject {
         let troubleCodes = try? await obdService.scanForTroubleCodes()
         print(troubleCodes ?? "nil")
     }
+
+    func getPendingCodes() async {
+        let codes = try? await obdService.scanForPendingTroubleCodes()
+        print(codes ?? "nil")
+    }
+
+    func getVehicleInfo() async {
+        let calid = try? await obdService.getVehicleCalibrationID()
+        let cvn = try? await obdService.getCVN()
+        let vinDetails = try? await obdService.getDecodedVIN()
+        print("CALID: \(calid ?? "nil"), CVN: \(cvn ?? "nil")")
+        print("Vehicle: \(vinDetails?.make ?? "?") \(vinDetails?.year ?? 0)")
+    }
+
+    func startEvapTest() async {
+        let success = try? await obdService.startEvapLeakTest()
+        print("EVAP Test started: \(success ?? false)")
+    }
 }
 
 struct ContentView: View {
-    @ObservedObject var viewModel = ViewModel()
+    @State var viewModel = ViewModel()
     var body: some View {
         VStack(spacing: 20) {
-            Text("Connection State: \(viewModel.connectionState.rawValue)")
+            Text("Connection State: \(viewModel.connectionState.description)")
             ForEach(viewModel.requestingPIDs, id: \.self) { pid in
                 Text("\(pid.properties.description): \(viewModel.measurements[pid]?.value ?? 0) \(viewModel.measurements[pid]?.unit.symbol ?? "")")
             }
