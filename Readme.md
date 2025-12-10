@@ -123,7 +123,7 @@ Speed: 65.0
 
 2. Add the SwiftOBD2 Package:
     * In Xcode, navigate to File > Add Packages...
-    * Enter this repository's URL: https://github.com/kkonteh97/SwiftOBD2/
+    * Enter this repository's URL: https://github.com/momolas/Swift-OBD2/
     * Select the desired dependency rule (version, branch, or commit).
 
 3. Permissions and Capabilities:
@@ -372,10 +372,6 @@ Love SwiftOBD2? Here's how you can help:
 - 💡 **Suggest features** - Share your ideas for new functionality  
 - 🔀 **Contribute code** - Submit PRs for fixes and enhancements
 - 📢 **Spread the word** - Share with other iOS/Swift developers
-
-**Current Stars: 106+ and growing! 🚀**
-
-[![Star History Chart](https://api.star-history.com/svg?repos=kkonteh97/SwiftOBD2&type=Date)](https://star-history.com/#kkonteh97/SwiftOBD2&Date)
 
 ### Related Projects
 
