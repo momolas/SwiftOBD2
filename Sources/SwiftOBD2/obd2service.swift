@@ -21,16 +21,6 @@ public protocol CommProtocol {
     func scanForPeripherals() -> AsyncStream<Device>
 }
 
-struct Command: Codable {
-    var bytes: Int
-    var command: String
-    var decoder: String
-    var description: String
-    var live: Bool
-    var maxValue: Int
-    var minValue: Int
-}
-
 public class ConfigurationService {
     static var shared = ConfigurationService()
     var connectionType: ConnectionType {

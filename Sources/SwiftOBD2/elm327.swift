@@ -224,7 +224,7 @@ class ELM327 {
             _ = try await okResponse("ATE0") // Echo off
             _ = try await okResponse("ATL0") // Linefeeds off
             _ = try await okResponse("ATS0") // Spaces off
-            _ = try await okResponse("ATH1") // Headers off
+            _ = try await okResponse("ATH1") // Headers on
             _ = try await okResponse("ATSP0") // Set protocol to automatic
             logger.info("ELM327 adapter initialized successfully.")
         } catch {
