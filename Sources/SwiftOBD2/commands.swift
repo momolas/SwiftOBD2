@@ -34,10 +34,34 @@ public extension DecodeResult {
     }
 }
 
+public struct Mode2Wrapper: PID, Codable, Hashable {
+    public let mode1: OBDCommand.Mode1
+
+    public var command: String {
+        return "02" + String(mode1.command.dropFirst(2))
+    }
+
+    public var description: String {
+        return "Freeze Frame: " + mode1.description
+    }
+
+    public var bytes: Int {
+        return mode1.bytes
+    }
+
+    public var decoder: Decoders {
+        return mode1.decoder
+    }
+
+    public func decode(data: Data, unit: MeasurementUnit) -> Result<DecodeResult, DecodeError> {
+        return mode1.decode(data: data, unit: unit)
+    }
+}
 
 public enum OBDCommand: Codable, Hashable, Comparable, Identifiable {
     case general(General)
     case mode1(Mode1)
+    case mode2(Mode1)
     case mode3(Mode3)
     case mode5(Mode5)
     case mode6(Mode6)
@@ -116,7 +140,11 @@ public enum OBDCommand: Codable, Hashable, Comparable, Identifiable {
             return 0
         }
 
-        public func decode(data: Data) -> Result<DecodeResult, DecodeError> {
+        public var decoder: Decoders {
+            return .none
+        }
+
+        public func decode(data: Data, unit: MeasurementUnit) -> Result<DecodeResult, DecodeError> {
             return .failure(.unsupportedDecoder)
         }
     }
@@ -239,8 +267,12 @@ public enum OBDCommand: Codable, Hashable, Comparable, Identifiable {
             return 0
         }
 
-        public func decode(data: Data) -> Result<DecodeResult, DecodeError> {
-            return Decoders.dtc.getDecoder()!.decode(data: data)
+        public var decoder: Decoders {
+            return .dtc
+        }
+
+        public func decode(data: Data, unit: MeasurementUnit) -> Result<DecodeResult, DecodeError> {
+            return decoder.getDecoder()!.decode(data: data, unit: unit)
         }
     }
 
@@ -263,7 +295,11 @@ public enum OBDCommand: Codable, Hashable, Comparable, Identifiable {
             return 0
         }
 
-        public func decode(data: Data) -> Result<DecodeResult, DecodeError> {
+        public var decoder: Decoders {
+            return .none
+        }
+
+        public func decode(data: Data, unit: MeasurementUnit) -> Result<DecodeResult, DecodeError> {
             return .failure(.unsupportedDecoder)
         }
     }
@@ -311,13 +347,17 @@ public enum OBDCommand: Codable, Hashable, Comparable, Identifiable {
             return 0 // Variable response
         }
 
-        public func decode(data: Data) -> Result<DecodeResult, DecodeError> {
+        public var decoder: Decoders {
+            return .monitor
+        }
+
+        public func decode(data: Data, unit: MeasurementUnit) -> Result<DecodeResult, DecodeError> {
             // Mode 5 decoding is complex and depends on ECU.
             // For now, using MonitorDecoder which handles similar structures?
             // Actually Mode 5 response includes TID, CID, Val, Min, Max.
             // MonitorDecoder is designed for Mode 6 but might work if structure is compatible.
             // I'll use a new case in Decoders or reuse MonitorDecoder.
-            return Decoders.monitor.getDecoder()!.decode(data: data)
+            return decoder.getDecoder()!.decode(data: data, unit: unit)
         }
     }
 
@@ -340,8 +380,12 @@ public enum OBDCommand: Codable, Hashable, Comparable, Identifiable {
             return 0
         }
 
-        public func decode(data: Data) -> Result<DecodeResult, DecodeError> {
-            return Decoders.dtc.getDecoder()!.decode(data: data)
+        public var decoder: Decoders {
+            return .dtc
+        }
+
+        public func decode(data: Data, unit: MeasurementUnit) -> Result<DecodeResult, DecodeError> {
+            return decoder.getDecoder()!.decode(data: data, unit: unit)
         }
     }
 
@@ -364,7 +408,11 @@ public enum OBDCommand: Codable, Hashable, Comparable, Identifiable {
             return 0
         }
 
-        public func decode(data: Data) -> Result<DecodeResult, DecodeError> {
+        public var decoder: Decoders {
+            return .none
+        }
+
+        public func decode(data: Data, unit: MeasurementUnit) -> Result<DecodeResult, DecodeError> {
             // Mode 8 response is usually just positive response (48 ...) or error
             // If we get data, it might be status.
             // For EVAP test, standard doesn't define specific data return other than success.
@@ -391,8 +439,12 @@ public enum OBDCommand: Codable, Hashable, Comparable, Identifiable {
             return 0
         }
 
-        public func decode(data: Data) -> Result<DecodeResult, DecodeError> {
-            return Decoders.dtc.getDecoder()!.decode(data: data)
+        public var decoder: Decoders {
+            return .dtc
+        }
+
+        public func decode(data: Data, unit: MeasurementUnit) -> Result<DecodeResult, DecodeError> {
+            return decoder.getDecoder()!.decode(data: data, unit: unit)
         }
     }
 
@@ -532,23 +584,24 @@ public enum OBDCommand: Codable, Hashable, Comparable, Identifiable {
             }
         }
 
-        public func decode(data: Data) -> Result<DecodeResult, DecodeError> {
-            let decoder: Decoders = {
-                switch self {
-                case .PIDS_9A: return .pid
-                case .VIN_MESSAGE_COUNT: return .count
-                case .VIN: return .encoded_string
-                case .CALIBRATION_ID_MESSAGE_COUNT: return .count
-                case .CALIBRATION_ID: return .encoded_string
-                case .CVN_MESSAGE_COUNT: return .count
-                case .CVN: return .cvn
-                }
-            }()
-            return decoder.getDecoder()!.decode(data: data)
+    public var decoder: Decoders {
+        switch self {
+        case .PIDS_9A: return .pid
+        case .VIN_MESSAGE_COUNT: return .count
+        case .VIN: return .encoded_string
+        case .CALIBRATION_ID_MESSAGE_COUNT: return .count
+        case .CALIBRATION_ID: return .encoded_string
+        case .CVN_MESSAGE_COUNT: return .count
+        case .CVN: return .cvn
         }
     }
 
-    static var pidGetters: [OBDCommand] = {
+    public func decode(data: Data, unit: MeasurementUnit) -> Result<DecodeResult, DecodeError> {
+        return decoder.getDecoder()!.decode(data: data, unit: unit)
+        }
+    }
+
+    static let pidGetters: [OBDCommand] = {
         var getters: [OBDCommand] = []
         for command in OBDCommand.Mode1.allCases {
             if case .pid = command.decoder {
@@ -570,7 +623,7 @@ public enum OBDCommand: Codable, Hashable, Comparable, Identifiable {
         return getters
     }()
 
-    static public var allCommands: [OBDCommand] = {
+    static public let allCommands: [OBDCommand] = {
         var commands: [OBDCommand] = []
         for command in OBDCommand.General.allCases {
             commands.append(.general(command))
@@ -653,7 +706,11 @@ extension OBDCommand.General: PID {
         return 5
     }
 
-    public func decode(data: Data) -> Result<DecodeResult, DecodeError> {
+    public var decoder: Decoders {
+        return .none
+    }
+
+    public func decode(data: Data, unit: MeasurementUnit) -> Result<DecodeResult, DecodeError> {
         return .failure(.unsupportedDecoder)
     }
 }
@@ -962,108 +1019,109 @@ extension OBDCommand.Mode1 {
         }
     }
 
-    public func decode(data: Data) -> Result<DecodeResult, DecodeError> {
-        let decoder: Decoders = {
-            switch self {
-            case .pidsA: return .pid
-            case .status: return .status
-            case .freezeDTC: return .singleDTC
-            case .fuelStatus: return .fuelStatus
-            case .engineLoad: return .percent
-            case .coolantTemp: return .temp
-            case .shortFuelTrim1: return .percentCentered
-            case .longFuelTrim1: return .percentCentered
-            case .shortFuelTrim2: return .percentCentered
-            case .longFuelTrim2: return .percentCentered
-            case .fuelPressure: return .fuelPressure
-            case .intakePressure: return .pressure
-            case .rpm: return .uas(0x07)
-            case .speed: return .uas(0x09)
-            case .timingAdvance: return .timingAdvance
-            case .intakeTemp: return .temp
-            case .maf: return .uas(0x27)
-            case .throttlePos: return .percent
-            case .airStatus: return .airStatus
-            case .O2Sensor: return .o2Sensors
-            case .O2Bank1Sensor1: return .sensorVoltage
-            case .O2Bank1Sensor2: return .sensorVoltage
-            case .O2Bank1Sensor3: return .sensorVoltage
-            case .O2Bank1Sensor4: return .sensorVoltage
-            case .O2Bank2Sensor1: return .sensorVoltage
-            case .O2Bank2Sensor2: return .sensorVoltage
-            case .O2Bank2Sensor3: return .sensorVoltage
-            case .O2Bank2Sensor4: return .sensorVoltage
-            case .obdcompliance: return .obdCompliance
-            case .O2SensorsALT: return .o2SensorsAlt
-            case .auxInputStatus: return .auxInputStatus
-            case .runTime: return .uas(0x12)
-            case .pidsB: return .pid
-            case .distanceWMIL: return .uas(0x25)
-            case .fuelRailPressureVac: return .uas(0x19)
-            case .fuelRailPressureDirect: return .uas(0x1B)
-            case .O2Sensor1WRVolatage: return .sensorVoltageBig
-            case .O2Sensor2WRVolatage: return .sensorVoltageBig
-            case .O2Sensor3WRVolatage: return .sensorVoltageBig
-            case .O2Sensor4WRVolatage: return .sensorVoltageBig
-            case .O2Sensor5WRVolatage: return .sensorVoltageBig
-            case .O2Sensor6WRVolatage: return .sensorVoltageBig
-            case .O2Sensor7WRVolatage: return .sensorVoltageBig
-            case .O2Sensor8WRVolatage: return .sensorVoltageBig
-            case .commandedEGR: return .percent
-            case .EGRError: return .percentCentered
-            case .evaporativePurge: return .percent
-            case .fuelLevel: return .percent
-            case .warmUpsSinceDTCCleared: return .uas(0x01)
-            case .distanceSinceDTCCleared: return .uas(0x25)
-            case .evapVaporPressure: return .evapPressure
-            case .barometricPressure: return .pressure
-            case .O2Sensor1WRCurrent: return .currentCentered
-            case .O2Sensor2WRCurrent: return .currentCentered
-            case .O2Sensor3WRCurrent: return .currentCentered
-            case .O2Sensor4WRCurrent: return .currentCentered
-            case .O2Sensor5WRCurrent: return .currentCentered
-            case .O2Sensor6WRCurrent: return .currentCentered
-            case .O2Sensor7WRCurrent: return .currentCentered
-            case .O2Sensor8WRCurrent: return .currentCentered
-            case .catalystTempB1S1: return .uas(0x16)
-            case .catalystTempB2S1: return .uas(0x16)
-            case .catalystTempB1S2: return .uas(0x16)
-            case .catalystTempB2S2: return .uas(0x16)
-            case .pidsC: return .pid
-            case .statusDriveCycle: return .status
-            case .controlModuleVoltage: return .uas(0x0B)
-            case .absoluteLoad: return .percent
-            case .commandedEquivRatio: return .uas(0x1E)
-            case .relativeThrottlePos: return .percent
-            case .ambientAirTemp: return .temp
-            case .throttlePosB: return .percent
-            case .throttlePosC: return .percent
-            case .throttlePosD: return .percent
-            case .throttlePosE: return .percent
-            case .throttlePosF: return .percent
-            case .throttleActuator: return .percent
-            case .runTimeMIL: return .uas(0x34)
-            case .timeSinceDTCCleared: return .uas(0x34)
-            case .maxValues: return .none
-            case .maxMAF: return .maxMaf
-            case .fuelType: return .fuelType
-            case .ethanoPercent: return .percent
-            case .evapVaporPressureAbs: return .evapPressureAlt
-            case .evapVaporPressureAlt: return .evapPressureAlt
-            case .shortO2TrimB1: return .percentCentered
-            case .longO2TrimB1: return .percentCentered
-            case .shortO2TrimB2: return .percentCentered
-            case .longO2TrimB2: return .percentCentered
-            case .fuelRailPressureAbs: return .uas(0x1B)
-            case .relativeAccelPos: return .percent
-            case .hybridBatteryLife: return .percent
-            case .engineOilTemp: return .temp
-            case .fuelInjectionTiming: return .injectTiming
-            case .fuelRate: return .fuelRate
-            case .emissionsReq: return .none
-            }
-        }()
-        return decoder.getDecoder()!.decode(data: data)
+    public var decoder: Decoders {
+        switch self {
+        case .pidsA: return .pid
+        case .status: return .status
+        case .freezeDTC: return .singleDTC
+        case .fuelStatus: return .fuelStatus
+        case .engineLoad: return .percent
+        case .coolantTemp: return .temp
+        case .shortFuelTrim1: return .percentCentered
+        case .longFuelTrim1: return .percentCentered
+        case .shortFuelTrim2: return .percentCentered
+        case .longFuelTrim2: return .percentCentered
+        case .fuelPressure: return .fuelPressure
+        case .intakePressure: return .pressure
+        case .rpm: return .uas(0x07)
+        case .speed: return .uas(0x09)
+        case .timingAdvance: return .timingAdvance
+        case .intakeTemp: return .temp
+        case .maf: return .uas(0x27)
+        case .throttlePos: return .percent
+        case .airStatus: return .airStatus
+        case .O2Sensor: return .o2Sensors
+        case .O2Bank1Sensor1: return .sensorVoltage
+        case .O2Bank1Sensor2: return .sensorVoltage
+        case .O2Bank1Sensor3: return .sensorVoltage
+        case .O2Bank1Sensor4: return .sensorVoltage
+        case .O2Bank2Sensor1: return .sensorVoltage
+        case .O2Bank2Sensor2: return .sensorVoltage
+        case .O2Bank2Sensor3: return .sensorVoltage
+        case .O2Bank2Sensor4: return .sensorVoltage
+        case .obdcompliance: return .obdCompliance
+        case .O2SensorsALT: return .o2SensorsAlt
+        case .auxInputStatus: return .auxInputStatus
+        case .runTime: return .uas(0x12)
+        case .pidsB: return .pid
+        case .distanceWMIL: return .uas(0x25)
+        case .fuelRailPressureVac: return .uas(0x19)
+        case .fuelRailPressureDirect: return .uas(0x1B)
+        case .O2Sensor1WRVolatage: return .sensorVoltageBig
+        case .O2Sensor2WRVolatage: return .sensorVoltageBig
+        case .O2Sensor3WRVolatage: return .sensorVoltageBig
+        case .O2Sensor4WRVolatage: return .sensorVoltageBig
+        case .O2Sensor5WRVolatage: return .sensorVoltageBig
+        case .O2Sensor6WRVolatage: return .sensorVoltageBig
+        case .O2Sensor7WRVolatage: return .sensorVoltageBig
+        case .O2Sensor8WRVolatage: return .sensorVoltageBig
+        case .commandedEGR: return .percent
+        case .EGRError: return .percentCentered
+        case .evaporativePurge: return .percent
+        case .fuelLevel: return .percent
+        case .warmUpsSinceDTCCleared: return .uas(0x01)
+        case .distanceSinceDTCCleared: return .uas(0x25)
+        case .evapVaporPressure: return .evapPressure
+        case .barometricPressure: return .pressure
+        case .O2Sensor1WRCurrent: return .currentCentered
+        case .O2Sensor2WRCurrent: return .currentCentered
+        case .O2Sensor3WRCurrent: return .currentCentered
+        case .O2Sensor4WRCurrent: return .currentCentered
+        case .O2Sensor5WRCurrent: return .currentCentered
+        case .O2Sensor6WRCurrent: return .currentCentered
+        case .O2Sensor7WRCurrent: return .currentCentered
+        case .O2Sensor8WRCurrent: return .currentCentered
+        case .catalystTempB1S1: return .uas(0x16)
+        case .catalystTempB2S1: return .uas(0x16)
+        case .catalystTempB1S2: return .uas(0x16)
+        case .catalystTempB2S2: return .uas(0x16)
+        case .pidsC: return .pid
+        case .statusDriveCycle: return .status
+        case .controlModuleVoltage: return .uas(0x0B)
+        case .absoluteLoad: return .percent
+        case .commandedEquivRatio: return .uas(0x1E)
+        case .relativeThrottlePos: return .percent
+        case .ambientAirTemp: return .temp
+        case .throttlePosB: return .percent
+        case .throttlePosC: return .percent
+        case .throttlePosD: return .percent
+        case .throttlePosE: return .percent
+        case .throttlePosF: return .percent
+        case .throttleActuator: return .percent
+        case .runTimeMIL: return .uas(0x34)
+        case .timeSinceDTCCleared: return .uas(0x34)
+        case .maxValues: return .none
+        case .maxMAF: return .maxMaf
+        case .fuelType: return .fuelType
+        case .ethanoPercent: return .percent
+        case .evapVaporPressureAbs: return .evapPressureAlt
+        case .evapVaporPressureAlt: return .evapPressureAlt
+        case .shortO2TrimB1: return .percentCentered
+        case .longO2TrimB1: return .percentCentered
+        case .shortO2TrimB2: return .percentCentered
+        case .longO2TrimB2: return .percentCentered
+        case .fuelRailPressureAbs: return .uas(0x1B)
+        case .relativeAccelPos: return .percent
+        case .hybridBatteryLife: return .percent
+        case .engineOilTemp: return .temp
+        case .fuelInjectionTiming: return .injectTiming
+        case .fuelRate: return .fuelRate
+        case .emissionsReq: return .none
+        }
+    }
+
+    public func decode(data: Data, unit: MeasurementUnit) -> Result<DecodeResult, DecodeError> {
+        return decoder.getDecoder()!.decode(data: data, unit: unit)
     }
 }
 
@@ -1258,14 +1316,15 @@ extension OBDCommand.Mode6 {
         return 0
     }
 
-    public func decode(data: Data) -> Result<DecodeResult, DecodeError> {
-        let decoder: Decoders = {
-            switch self {
-            case .MIDS_A, .MIDS_B, .MIDS_C, .MIDS_D, .MIDS_E, .MIDS_F: return .pid
-            default: return .monitor
-            }
-        }()
-        return decoder.getDecoder()!.decode(data: data)
+    public var decoder: Decoders {
+        switch self {
+        case .MIDS_A, .MIDS_B, .MIDS_C, .MIDS_D, .MIDS_E, .MIDS_F: return .pid
+        default: return .monitor
+        }
+    }
+
+    public func decode(data: Data, unit: MeasurementUnit) -> Result<DecodeResult, DecodeError> {
+        return decoder.getDecoder()!.decode(data: data, unit: unit)
     }
 }
 

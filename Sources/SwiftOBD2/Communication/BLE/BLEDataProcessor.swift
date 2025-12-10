@@ -3,7 +3,7 @@ import CoreBluetooth
 import Foundation
 import OSLog
 
-class BLEMessageProcessor {
+class BLEMessageProcessor: @unchecked Sendable {
     private var buffer = Data()
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.example.app", category: "BLEMessageProcessor")
     private var messageCompletion: (([String]?, Error?) -> Void)?

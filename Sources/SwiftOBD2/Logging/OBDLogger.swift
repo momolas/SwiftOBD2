@@ -3,7 +3,7 @@ import OSLog
 
 /// Centralized logging system for SwiftOBD2
 /// Provides structured logging with consistent categories and levels
-public class OBDLogger {
+public class OBDLogger: @unchecked Sendable {
     
     // MARK: - Categories
     
@@ -26,7 +26,7 @@ public class OBDLogger {
     // MARK: - Properties
     
     private let subsystem: String
-    private var loggers: [Category: Logger] = [:]
+    private let loggers: [Category: Logger]
     
     /// Controls whether logging is enabled
     public var isLoggingEnabled: Bool = true
@@ -38,13 +38,11 @@ public class OBDLogger {
     
     private init() {
         self.subsystem = Bundle.main.bundleIdentifier ?? "com.swiftobd2.library"
-        setupLoggers()
-    }
-    
-    private func setupLoggers() {
+        var logs: [Category: Logger] = [:]
         for category in Category.allCases {
-            loggers[category] = Logger(subsystem: subsystem, category: category.rawValue)
+            logs[category] = Logger(subsystem: subsystem, category: category.rawValue)
         }
+        self.loggers = logs
     }
     
     // MARK: - Logging Methods

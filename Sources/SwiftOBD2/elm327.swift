@@ -261,12 +261,12 @@ class ELM327 {
     func getStatus() async throws -> DecodeResult {
         logger.info("Getting status")
         let statusCommand = OBDCommand.Mode1.status
-        let statusResponse = try await sendCommand(statusCommand.properties.command)
+        let statusResponse = try await sendCommand(statusCommand.command)
         logger.debug("Status response: \(statusResponse)")
         guard let statusData = try canProtocol?.parse(statusResponse).first?.data else {
             throw DecodeError.noData
         }
-        return try statusCommand.properties.decode(data: statusData).get()
+        return try statusCommand.decode(data: statusData, unit: .metric).get()
     }
 
     func scanForTroubleCodes() async throws -> [ECUID: [TroubleCode]] {
@@ -339,7 +339,7 @@ class ELM327 {
 
     func requestVin() async -> String? {
         let command = OBDCommand.Mode9.VIN
-        guard let vinResponse = try? await sendCommand(command.properties.command) else {
+        guard let vinResponse = try? await sendCommand(command.command) else {
             return nil
         }
 
@@ -352,7 +352,7 @@ class ELM327 {
         vinString = vinString
             .replacingOccurrences(of: "[^a-zA-Z0-9]",
                                   with: "",
-                                  options: .regularExpression)
+                                  options: String.CompareOptions.regularExpression)
 
         return vinString
     }

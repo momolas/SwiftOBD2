@@ -21,7 +21,7 @@ public enum WifiError: Error, LocalizedError {
     }
 }
 
-class WifiManager: NSObject, CommProtocol {
+class WifiManager: NSObject, CommProtocol, @unchecked Sendable {
     var connectionState: ConnectionState = .disconnected {
         didSet {
             continuation?.yield(connectionState)

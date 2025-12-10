@@ -25,7 +25,7 @@ class BLEPeripheralScanner {
 
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.example.app", category: "BLEPeripheralScanner")
 
-    static let supportedServices = [
+    nonisolated(unsafe) static let supportedServices = [
         CBUUID(string: "FFE0"),
         CBUUID(string: "FFF0"),
         CBUUID(string: "18F0"), // e.g. VGate iCar Pro
@@ -67,7 +67,7 @@ enum BLEScannerError: Error, LocalizedError {
 }
 
 /// Cancels the current operation and throws a timeout error.
-func withTimeout<R>(
+func withTimeout<R: Sendable>(
     seconds: TimeInterval,
     timeoutError: Error = BLEManagerError.timeout,
     onTimeout: (() -> Void)? = nil,

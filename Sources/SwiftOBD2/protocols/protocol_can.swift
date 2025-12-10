@@ -7,7 +7,7 @@
 
 import Foundation
 
-protocol CANProtocol {
+protocol CANProtocol: Sendable {
     var elmID: String { get }
     var name: String { get }
 

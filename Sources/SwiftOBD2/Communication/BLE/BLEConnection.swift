@@ -16,7 +16,7 @@ protocol BLEConnectionProtocol {
 }
 
 /// Focused component responsible for BLE connection management and service discovery
-class BLEConnection: NSObject, BLEConnectionProtocol {
+class BLEConnection: NSObject, BLEConnectionProtocol, @unchecked Sendable {
     // MARK: - Properties
 
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.swiftobd2.app", category: "BLEConnection")
@@ -54,7 +54,7 @@ class BLEConnection: NSObject, BLEConnectionProtocol {
         logger.debug("BLEConnection initialized with services: \(supportedServices.map(\.uuidString))")
     }
 
-    static let defaultServices = [
+    nonisolated(unsafe) static let defaultServices = [
         CBUUID(string: "FFE0"),
         CBUUID(string: "FFF0"),
         CBUUID(string: "18F0"), // e.g. VGate iCar Pro

@@ -21,8 +21,8 @@ public protocol CommProtocol {
     func scanForPeripherals() -> AsyncStream<Device>
 }
 
-public class ConfigurationService {
-    static var shared = ConfigurationService()
+public final class ConfigurationService: Sendable {
+    static let shared = ConfigurationService()
     var connectionType: ConnectionType {
         get {
             let rawValue = UserDefaults.standard.string(forKey: "connectionType") ?? "Bluetooth"
