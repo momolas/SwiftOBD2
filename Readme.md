@@ -83,6 +83,9 @@ Speed: 65.0
     * Gets the overall status of the vehicle's onboard systems.
     * Retrieves Freeze Frame data.
     * Retrieves Vehicle Information (VIN, Calibration ID, CVN).
+    * **Full VIN Decoding** (Make, Year, Country, Region).
+    * **On-Board System Control** (Mode 08) including EVAP Leak Test.
+    * **O2 Sensor Monitoring** (Mode 05).
     
 * Sensor Monitoring:
     * Retrieve and view data from various vehicle sensors in real time.
@@ -108,6 +111,9 @@ Speed: 65.0
 - [x] Retrieve Pending DTCs (Mode 07)
 - [x] Retrieve Vehicle Information (VIN, CALID, CVN) (Mode 09)
 - [x] Retrieve Freeze Frame Data (Mode 02)
+- [x] On-Board System Control (Mode 08)
+- [x] O2 Sensor Monitoring (Mode 05)
+- [x] Full VIN Decoding
     
     
 ### Setting Up a Project
@@ -173,7 +179,9 @@ import Observation
         * `getStatus()`: Retrieves Status since DTCs cleared.
         * `getVehicleCalibrationID()`: Retrieves Calibration ID.
         * `getCVN()`: Retrieves Calibration Verification Number.
+        * `getDecodedVIN()`: Retrieves and decodes the VIN.
         * `getFreezeFrame(for:)`: Retrieves freeze frame data.
+        * `startEvapLeakTest()`: Initiates EVAP Leak Test (Mode 08).
 
 7. Continuous Updates
     * Use the startContinuousUpdates method to continuously poll and retrieve updated measurements from the vehicle via an `AsyncStream`.
@@ -193,7 +201,7 @@ class ViewModel {
     }
     
     let obdService = OBDService(connectionType: .bluetooth)
-
+    
     var connectionState: ConnectionState {
         obdService.connectionState
     }
@@ -243,11 +251,18 @@ class ViewModel {
         let codes = try? await obdService.scanForPendingTroubleCodes()
         print(codes ?? "nil")
     }
-
+    
     func getVehicleInfo() async {
         let calid = try? await obdService.getVehicleCalibrationID()
         let cvn = try? await obdService.getCVN()
+        let vinDetails = try? await obdService.getDecodedVIN()
         print("CALID: \(calid ?? "nil"), CVN: \(cvn ?? "nil")")
+        print("Vehicle: \(vinDetails?.make ?? "?") \(vinDetails?.year ?? 0)")
+    }
+    
+    func startEvapTest() async {
+        let success = try? await obdService.startEvapLeakTest()
+        print("EVAP Test started: \(success ?? false)")
     }
 }
 
