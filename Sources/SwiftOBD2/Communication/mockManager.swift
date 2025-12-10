@@ -166,8 +166,8 @@ class MOCKComm: CommProtocol {
             }
             return response
 
-        } else if command == "03" {
-            // 03 is a request for DTCs
+        } else if ["03", "07", "0A"].contains(command) {
+            // 03, 07, 0A are requests for DTCs
             let dtcs = ["P0104", "U0207"]
             var response = ""
             // convert to hex
@@ -181,7 +181,9 @@ class MOCKComm: CommProtocol {
             if ecuSettings.headerOn {
                 header = "7E8"
             }
-            let mode = "43"
+            let modeInt = (Int(command, radix: 16) ?? 0) + 0x40
+            let mode = String(format: "%02X", modeInt)
+
             response = mode + " " + response
             let length = String(format: "%02X", response.count / 3 + 1)
             response = header + " " + length + " " + response

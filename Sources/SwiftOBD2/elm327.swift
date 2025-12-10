@@ -270,10 +270,23 @@ class ELM327 {
     }
 
     func scanForTroubleCodes() async throws -> [ECUID: [TroubleCode]] {
+        logger.info("Scanning for trouble codes (Mode 03)")
+        return try await scanForCodes(command: .mode3(.GET_DTC))
+    }
+
+    func scanForPendingTroubleCodes() async throws -> [ECUID: [TroubleCode]] {
+        logger.info("Scanning for pending trouble codes (Mode 07)")
+        return try await scanForCodes(command: .mode7(.GET_PENDING_DTC))
+    }
+
+    func scanForPermanentTroubleCodes() async throws -> [ECUID: [TroubleCode]] {
+        logger.info("Scanning for permanent trouble codes (Mode 0A)")
+        return try await scanForCodes(command: .modeA(.GET_PERMANENT_DTC))
+    }
+
+    private func scanForCodes(command: OBDCommand) async throws -> [ECUID: [TroubleCode]] {
         var dtcs: [ECUID: [TroubleCode]] = [:]
-        logger.info("Scanning for trouble codes")
-        let dtcCommand = OBDCommand.Mode3.GET_DTC
-        let dtcResponse = try await sendCommand(dtcCommand.properties.command)
+        let dtcResponse = try await sendCommand(command.properties.command)
 
         guard let messages = try canProtocol?.parse(dtcResponse) else {
             return [:]
@@ -282,7 +295,7 @@ class ELM327 {
             guard let dtcData = message.data else {
                 continue
             }
-            let decodedResult = dtcCommand.properties.decode(data: dtcData)
+            let decodedResult = command.properties.decode(data: dtcData)
 
             let ecuId = message.ecu
             switch decodedResult {

@@ -302,6 +302,30 @@ public class OBDService {
         }
     }
 
+    /// Scans the vehicle for Pending Diagnostic Trouble Codes (DTCs) - Mode 07.
+    ///
+    /// - Returns: A dictionary where keys are `ECUID`s and values are arrays of `TroubleCode`.
+    /// - Throws: An `OBDServiceError.scanFailed` error if the DTC scan fails.
+    public func scanForPendingTroubleCodes() async throws -> [ECUID: [TroubleCode]] {
+        do {
+            return try await elm327.scanForPendingTroubleCodes()
+        } catch {
+            throw OBDServiceError.scanFailed(underlyingError: error)
+        }
+    }
+
+    /// Scans the vehicle for Permanent Diagnostic Trouble Codes (DTCs) - Mode 0A.
+    ///
+    /// - Returns: A dictionary where keys are `ECUID`s and values are arrays of `TroubleCode`.
+    /// - Throws: An `OBDServiceError.scanFailed` error if the DTC scan fails.
+    public func scanForPermanentTroubleCodes() async throws -> [ECUID: [TroubleCode]] {
+        do {
+            return try await elm327.scanForPermanentTroubleCodes()
+        } catch {
+            throw OBDServiceError.scanFailed(underlyingError: error)
+        }
+    }
+
     /// Retrieves the monitor status since the Diagnostic Trouble Codes (DTCs) were last cleared.
     ///
     /// This is useful for checking the readiness of emissions-related systems.
