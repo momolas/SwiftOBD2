@@ -33,11 +33,11 @@ final class OBDServiceTests: XCTestCase {
         let pids = [
             OBDCommand.mode1(.rpm),
             OBDCommand.mode1(.speed),
-            OBDCommand.mode1(.throttlePosition),
+            OBDCommand.mode1(.throttlePos),
             OBDCommand.mode1(.engineLoad),
-            OBDCommand.mode1(.coolantTemperature),
+            OBDCommand.mode1(.coolantTemp),
             OBDCommand.mode1(.fuelPressure),
-            OBDCommand.mode1(.intakeManifoldPressure)
+            OBDCommand.mode1(.intakePressure)
         ]
 
         mockComm.setResponse(for: "010C0D1104050A", response: ["41 0C 00 00 0D 00 11 00 04 00 05 00 0A 00"])

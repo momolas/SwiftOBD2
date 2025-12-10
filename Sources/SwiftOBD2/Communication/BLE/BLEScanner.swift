@@ -1,4 +1,3 @@
-import Combine
 import CoreBluetooth
 import Foundation
 import OSLog
@@ -6,7 +5,7 @@ import OSLog
 /// Protocol for BLE scanning operations
 protocol BLEScannerProtocol {
     var foundPeripherals: [CBPeripheral] { get }
-    var peripheralPublisher: AnyPublisher<CBPeripheral, Never> { get }
+    var peripheralStream: AsyncStream<CBPeripheral> { get }
 
     func startScanning(services: [CBUUID]?) async throws
     func stopScanning()
@@ -14,16 +13,17 @@ protocol BLEScannerProtocol {
 }
 
 /// Focused component responsible for BLE device discovery and peripheral management
-class BLEPeripheralScanner: ObservableObject {
-    @Published var foundPeripherals: [CBPeripheral] = []
+class BLEPeripheralScanner {
+    var foundPeripherals: [CBPeripheral] = []
 
-    private let peripheralSubject = PassthroughSubject<CBPeripheral, Never>()
+    private var continuation: AsyncStream<CBPeripheral>.Continuation?
+    lazy var peripheralStream: AsyncStream<CBPeripheral> = {
+        AsyncStream { continuation in
+            self.continuation = continuation
+        }
+    }()
 
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.example.app", category: "BLEPeripheralScanner")
-
-    var peripheralPublisher: AnyPublisher<CBPeripheral, Never> {
-        peripheralSubject.eraseToAnyPublisher()
-    }
 
     static let supportedServices = [
         CBUUID(string: "FFE0"),
@@ -37,7 +37,7 @@ class BLEPeripheralScanner: ObservableObject {
 
         if !foundPeripherals.contains(where: { $0.identifier == peripheral.identifier }) {
             foundPeripherals.append(peripheral)
-            peripheralSubject.send(peripheral)
+            continuation?.yield(peripheral)
             logger.info("Found new peripheral: \(peripheral.name ?? "Unnamed") - RSSI: \(rssi)")
         }
     }
@@ -82,7 +82,7 @@ func withTimeout<R>(
 
         group.addTask {
             if seconds > 0 {
-                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                try await Task.sleep(for: .seconds(seconds))
             }
             try Task.checkCancellation()
 
