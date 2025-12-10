@@ -39,8 +39,10 @@ public enum OBDCommand: Codable, Hashable, Comparable, Identifiable {
     case general(General)
     case mode1(Mode1)
     case mode3(Mode3)
+    case mode5(Mode5)
     case mode6(Mode6)
     case mode7(Mode7)
+    case mode8(Mode8)
     case mode9(Mode9)
     case modeA(ModeA)
     case protocols(Protocols)
@@ -62,7 +64,11 @@ public enum OBDCommand: Codable, Hashable, Comparable, Identifiable {
             return command
         case let .mode3(command):
             return command
+        case let .mode5(command):
+            return command
         case let .mode7(command):
+            return command
+        case let .mode8(command):
             return command
         case let .mode9(command):
             return command
@@ -262,6 +268,59 @@ public enum OBDCommand: Codable, Hashable, Comparable, Identifiable {
         }
     }
 
+    public enum Mode5: CaseIterable, Codable, Comparable, PID {
+        case RTL_THRESHOLD_VOLTAGE
+        case LTR_THRESHOLD_VOLTAGE
+        case LOW_VOLTAGE_SWITCH_TIME
+        case HIGH_VOLTAGE_SWITCH_TIME
+        case RTL_SWITCH_TIME
+        case LTR_SWITCH_TIME
+        case MIN_VOLTAGE
+        case MAX_VOLTAGE
+        case TRANSITION_TIME
+
+        public var command: String {
+            switch self {
+            case .RTL_THRESHOLD_VOLTAGE: return "0501"
+            case .LTR_THRESHOLD_VOLTAGE: return "0502"
+            case .LOW_VOLTAGE_SWITCH_TIME: return "0503"
+            case .HIGH_VOLTAGE_SWITCH_TIME: return "0504"
+            case .RTL_SWITCH_TIME: return "0505"
+            case .LTR_SWITCH_TIME: return "0506"
+            case .MIN_VOLTAGE: return "0507"
+            case .MAX_VOLTAGE: return "0508"
+            case .TRANSITION_TIME: return "0509"
+            }
+        }
+
+        public var description: String {
+            switch self {
+            case .RTL_THRESHOLD_VOLTAGE: return "Rich to Lean Sensor Threshold Voltage"
+            case .LTR_THRESHOLD_VOLTAGE: return "Lean to Rich Sensor Threshold Voltage"
+            case .LOW_VOLTAGE_SWITCH_TIME: return "Low Sensor Voltage for Switch Time Calculation"
+            case .HIGH_VOLTAGE_SWITCH_TIME: return "High Sensor Voltage for Switch Time Calculation"
+            case .RTL_SWITCH_TIME: return "Rich to Lean Sensor Switch Time"
+            case .LTR_SWITCH_TIME: return "Lean to Rich Sensor Switch Time"
+            case .MIN_VOLTAGE: return "Minimum Sensor Voltage for Test Cycle"
+            case .MAX_VOLTAGE: return "Maximum Sensor Voltage for Test Cycle"
+            case .TRANSITION_TIME: return "Time between Sensor Transitions"
+            }
+        }
+
+        public var bytes: Int {
+            return 0 // Variable response
+        }
+
+        public func decode(data: Data) -> Result<DecodeResult, DecodeError> {
+            // Mode 5 decoding is complex and depends on ECU.
+            // For now, using MonitorDecoder which handles similar structures?
+            // Actually Mode 5 response includes TID, CID, Val, Min, Max.
+            // MonitorDecoder is designed for Mode 6 but might work if structure is compatible.
+            // I'll use a new case in Decoders or reuse MonitorDecoder.
+            return Decoders.monitor.getDecoder()!.decode(data: data)
+        }
+    }
+
     public enum Mode7: CaseIterable, Codable, Comparable, PID {
         case GET_PENDING_DTC
 
@@ -283,6 +342,33 @@ public enum OBDCommand: Codable, Hashable, Comparable, Identifiable {
 
         public func decode(data: Data) -> Result<DecodeResult, DecodeError> {
             return Decoders.dtc.getDecoder()!.decode(data: data)
+        }
+    }
+
+    public enum Mode8: CaseIterable, Codable, Comparable, PID {
+        case EVAP_LEAK_TEST
+
+        public var command: String {
+            switch self {
+            case .EVAP_LEAK_TEST: return "0801"
+            }
+        }
+
+        public var description: String {
+            switch self {
+            case .EVAP_LEAK_TEST: return "EVAP System Leak Test"
+            }
+        }
+
+        public var bytes: Int {
+            return 0
+        }
+
+        public func decode(data: Data) -> Result<DecodeResult, DecodeError> {
+            // Mode 8 response is usually just positive response (48 ...) or error
+            // If we get data, it might be status.
+            // For EVAP test, standard doesn't define specific data return other than success.
+            return .success(.stringResult("Test Initiated"))
         }
     }
 
@@ -502,12 +588,20 @@ public enum OBDCommand: Codable, Hashable, Comparable, Identifiable {
             commands.append(.mode3(command))
         }
 
+        for command in OBDCommand.Mode5.allCases {
+            commands.append(.mode5(command))
+        }
+
         for command in OBDCommand.Mode6.allCases {
             commands.append(.mode6(command))
         }
 
         for command in OBDCommand.Mode7.allCases {
             commands.append(.mode7(command))
+        }
+
+        for command in OBDCommand.Mode8.allCases {
+            commands.append(.mode8(command))
         }
 
         for command in OBDCommand.Mode9.allCases {

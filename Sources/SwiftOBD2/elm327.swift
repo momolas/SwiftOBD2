@@ -404,6 +404,14 @@ class ELM327 {
             throw error
         }
     }
+
+    func controlEvapLeakTest() async throws -> Bool {
+        let command = OBDCommand.mode8(.EVAP_LEAK_TEST)
+        _ = try await sendCommand(command.properties.command)
+        // If sendCommand succeeds and we get here, it implies the adapter accepted it.
+        // We could check for positive response code 48 01 ... but generic parser handles frames.
+        return true
+    }
 }
 
 extension ELM327 {

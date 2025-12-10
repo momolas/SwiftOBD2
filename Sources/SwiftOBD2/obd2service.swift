@@ -336,9 +336,21 @@ public class OBDService {
         return try await elm327.getCVN()
     }
 
+    /// Retrieves and decodes the Vehicle Identification Number (VIN).
+    public func getDecodedVIN() async throws -> VehicleDetails? {
+        guard let vin = try await elm327.requestVin() else { return nil }
+        return VINDecoder.decode(vin: vin)
+    }
+
     /// Retrieves freeze frame data for a specific PID - Mode 02.
     public func getFreezeFrame(for pid: OBDCommand.Mode1) async throws -> MeasurementResult? {
         return try await elm327.requestFreezeFrame(for: pid)
+    }
+
+    /// Initiates an EVAP System Leak Test (Mode 08).
+    /// - Returns: `true` if the test initiation request was successful.
+    public func startEvapLeakTest() async throws -> Bool {
+        return try await elm327.controlEvapLeakTest()
     }
 
     /// Retrieves the monitor status since the Diagnostic Trouble Codes (DTCs) were last cleared.
