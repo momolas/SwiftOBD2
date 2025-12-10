@@ -356,6 +356,54 @@ class ELM327 {
 
         return vinString
     }
+
+    func getCalibrationID() async throws -> String? {
+        let command = OBDCommand.mode9(.CALIBRATION_ID)
+        let response = try await sendCommand(command.properties.command)
+        guard let data = try canProtocol?.parse(response).first?.data else { return nil }
+
+        let result = command.properties.decode(data: data)
+        switch result {
+        case .success(let decodeResult):
+            if case .stringResult(let str) = decodeResult {
+                return str
+            }
+        case .failure(let error):
+            throw error
+        }
+        return nil
+    }
+
+    func getCVN() async throws -> String? {
+        let command = OBDCommand.mode9(.CVN)
+        let response = try await sendCommand(command.properties.command)
+        guard let data = try canProtocol?.parse(response).first?.data else { return nil }
+
+        let result = command.properties.decode(data: data)
+        switch result {
+        case .success(let decodeResult):
+            if case .stringResult(let str) = decodeResult {
+                return str
+            }
+        case .failure(let error):
+            throw error
+        }
+        return nil
+    }
+
+    func requestFreezeFrame(for pid: OBDCommand.Mode1) async throws -> MeasurementResult? {
+        let command = OBDCommand.mode2(pid)
+        let response = try await sendCommand(command.properties.command)
+        guard let data = try canProtocol?.parse(response).first?.data else { return nil }
+
+        let result = command.properties.decode(data: data)
+        switch result {
+        case .success(let decodeResult):
+            return decodeResult.measurementResult
+        case .failure(let error):
+            throw error
+        }
+    }
 }
 
 extension ELM327 {

@@ -326,6 +326,21 @@ public class OBDService {
         }
     }
 
+    /// Retrieves the vehicle's Calibration ID (CALID) - Mode 09 PID 04.
+    public func getVehicleCalibrationID() async throws -> String? {
+        return try await elm327.getCalibrationID()
+    }
+
+    /// Retrieves the vehicle's Calibration Verification Number (CVN) - Mode 09 PID 06.
+    public func getCVN() async throws -> String? {
+        return try await elm327.getCVN()
+    }
+
+    /// Retrieves freeze frame data for a specific PID - Mode 02.
+    public func getFreezeFrame(for pid: OBDCommand.Mode1) async throws -> MeasurementResult? {
+        return try await elm327.requestFreezeFrame(for: pid)
+    }
+
     /// Retrieves the monitor status since the Diagnostic Trouble Codes (DTCs) were last cleared.
     ///
     /// This is useful for checking the readiness of emissions-related systems.

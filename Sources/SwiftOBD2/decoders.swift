@@ -321,7 +321,7 @@ public enum Decoders: Equatable, Encodable {
                 return FuelRateDecoder()
             case .monitor:
                 return MonitorDecoder()
-            case .encoded_string:
+            case .encoded_string, .cvn:
                 return StringDecoder()
             case .uas(let id):
                 let decoder = UASDecoder(id: id)

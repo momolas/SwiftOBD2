@@ -54,6 +54,8 @@ public enum OBDCommand: Codable, Hashable, Comparable, Identifiable {
             return command
         case let .mode1(command):
             return command
+        case let .mode2(command):
+            return Mode2Wrapper(mode1: command)
         case let .mode9(command):
             return command
         case let .mode6(command):
@@ -490,6 +492,10 @@ public enum OBDCommand: Codable, Hashable, Comparable, Identifiable {
 
         for command in OBDCommand.Mode1.allCases {
             commands.append(.mode1(command))
+        }
+
+        for command in OBDCommand.Mode1.allCases {
+            commands.append(.mode2(command))
         }
 
         for command in OBDCommand.Mode3.allCases {
