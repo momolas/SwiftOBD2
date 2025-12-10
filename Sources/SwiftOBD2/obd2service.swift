@@ -128,7 +128,7 @@ public class OBDService {
             try await elm327.adapterInitialization()
             
             obdDebug("Initializing vehicle connection...", category: .connection)
-            let vehicleInfo = try await initializeVehicle(preferedProtocol)
+            let vehicleInfo = try await initializeVehicle(preferredProtocol)
 
             let duration = CFAbsoluteTimeGetCurrent() - startTime
             OBDLogger.shared.logPerformance("Connection established", duration: duration, success: true)

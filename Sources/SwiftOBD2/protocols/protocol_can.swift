@@ -20,7 +20,7 @@ extension CANProtocol {
     }
 
     func parseLegacy(_ lines: [String]) throws -> [MessageProtocol] {
-        let messages = try LegacyParcer(lines).messages
+        let messages = try LegacyParser(lines).messages
         return messages
     }
 }

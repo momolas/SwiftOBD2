@@ -13,7 +13,7 @@ struct FramesByECU {
     var frames: [LegacyFrame]
 }
 
-public struct LegacyParcer {
+public struct LegacyParser {
     let messages: [LegacyMessage]
     let frames: [LegacyFrame]
 

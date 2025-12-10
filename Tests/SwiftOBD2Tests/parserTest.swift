@@ -8,7 +8,7 @@
 @testable import SwiftOBD2
 import XCTest
 
-final class OBDParcerTest: XCTestCase {
+final class OBDParserTest: XCTestCase {
 //    func testOBDParcer() {
 //        let responses: [[String]] = [["7E8 06 41 00 BE 3F A8 13 00"],
 //                                     ["7E8 06 41 00 FF 00 00 00 00"],
