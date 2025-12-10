@@ -1,5 +1,4 @@
 import Foundation
-import Combine
 import Network
 
 public enum WifiError: Error, LocalizedError {
@@ -23,8 +22,19 @@ public enum WifiError: Error, LocalizedError {
 }
 
 class WifiManager: NSObject, CommProtocol {
-    @Published var connectionState: ConnectionState = .disconnected
-    var connectionStatePublisher: Published<ConnectionState>.Publisher { $connectionState }
+    var connectionState: ConnectionState = .disconnected {
+        didSet {
+            continuation?.yield(connectionState)
+        }
+    }
+
+    private var continuation: AsyncStream<ConnectionState>.Continuation?
+    var connectionStateStream: AsyncStream<ConnectionState> {
+        AsyncStream { continuation in
+            self.continuation = continuation
+            continuation.yield(connectionState)
+        }
+    }
 
     private var connection: NWConnection?
     private let host: NWEndpoint.Host
@@ -94,7 +104,7 @@ class WifiManager: NSObject, CommProtocol {
                 }
             } catch {
                 if i < retries - 1 {
-                    try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+                    try await Task.sleep(for: .milliseconds(100))
                 } else {
                     throw error
                 }

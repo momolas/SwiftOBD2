@@ -1,6 +1,6 @@
-import Combine
 import CoreBluetooth
 import Foundation
+import Observation
 
 public enum ConnectionType: String, CaseIterable {
     case bluetooth = "Bluetooth"
@@ -14,21 +14,11 @@ public protocol Device {
 }
 
 public protocol CommProtocol {
-    var connectionStatePublisher: Published<ConnectionState>.Publisher { get }
+    var connectionStateStream: AsyncStream<ConnectionState> { get }
     func connectAsync(timeout: TimeInterval, device: Device?) async throws
     func sendCommand(_ command: String, retries: Int) async throws -> [String]
     func disconnectPeripheral()
     func scanForPeripherals() -> AsyncStream<Device>
-}
-
-struct Command: Codable {
-    var bytes: Int
-    var command: String
-    var decoder: String
-    var description: String
-    var live: Bool
-    var maxValue: Int
-    var minValue: Int
 }
 
 public class ConfigurationService {
@@ -51,16 +41,18 @@ public class ConfigurationService {
 ///   - Sending and receiving OBD2 commands.
 ///   - Providing information about the vehicle.
 ///   - Managing the connection state.
-public class OBDService: ObservableObject {
+@Observable
+@MainActor
+public class OBDService {
     /// The current state of the connection to the OBD-II adapter.
-    @Published public private(set) var connectionState: ConnectionState = .disconnected
+    public private(set) var connectionState: ConnectionState = .disconnected
     /// A Boolean value indicating whether the service is currently scanning for peripherals.
-    @Published public private(set) var isScanning: Bool = false
+    public private(set) var isScanning: Bool = false
     /// The `CBPeripheral` that is currently connected. `nil` if not connected.
     /// - Note: This property will be deprecated in a future version in favor of a generic `Device` type.
-    @Published public private(set) var connectedPeripheral: CBPeripheral?
+    public private(set) var connectedPeripheral: CBPeripheral?
     /// The selected connection type (e.g., Bluetooth, Wi-Fi).
-    @Published public var connectionType: ConnectionType {
+    public var connectionType: ConnectionType {
         didSet {
             switchConnectionType(connectionType)
             ConfigurationService.shared.connectionType = connectionType
@@ -70,7 +62,7 @@ public class OBDService: ObservableObject {
     /// The internal ELM327 object responsible for direct adapter interaction.
     internal var elm327: ELM327
 
-    private var cancellables = Set<AnyCancellable>()
+    private var connectionStateTask: Task<Void, Never>?
 
     /// Initializes a new instance of `OBDService`.
     ///
@@ -99,9 +91,13 @@ public class OBDService: ObservableObject {
     }
 
     private func setupConnectionStateSubscription() {
-        elm327.connectionStatePublisher
-            .receive(on: DispatchQueue.main)
-            .assign(to: &$connectionState)
+        connectionStateTask?.cancel()
+        connectionStateTask = Task { [weak self] in
+            guard let self = self else { return }
+            for await state in self.elm327.connectionStateStream {
+                self.connectionState = state
+            }
+        }
     }
 
     // MARK: - Connection Handling
@@ -209,7 +205,7 @@ public class OBDService: ObservableObject {
                         let pids = await pidListActor.getPIDs()
                         let results = try await self.requestPIDs(pids, unit: unit)
                         continuation.yield(results)
-                        try await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+                        try await Task.sleep(for: .seconds(interval))
                     } catch {
                         continuation.finish(throwing: error)
                         return
@@ -304,6 +300,45 @@ public class OBDService: ObservableObject {
         } catch {
             throw OBDServiceError.scanFailed(underlyingError: error)
         }
+    }
+
+    /// Scans the vehicle for Pending Diagnostic Trouble Codes (DTCs) - Mode 07.
+    ///
+    /// - Returns: A dictionary where keys are `ECUID`s and values are arrays of `TroubleCode`.
+    /// - Throws: An `OBDServiceError.scanFailed` error if the DTC scan fails.
+    public func scanForPendingTroubleCodes() async throws -> [ECUID: [TroubleCode]] {
+        do {
+            return try await elm327.scanForPendingTroubleCodes()
+        } catch {
+            throw OBDServiceError.scanFailed(underlyingError: error)
+        }
+    }
+
+    /// Scans the vehicle for Permanent Diagnostic Trouble Codes (DTCs) - Mode 0A.
+    ///
+    /// - Returns: A dictionary where keys are `ECUID`s and values are arrays of `TroubleCode`.
+    /// - Throws: An `OBDServiceError.scanFailed` error if the DTC scan fails.
+    public func scanForPermanentTroubleCodes() async throws -> [ECUID: [TroubleCode]] {
+        do {
+            return try await elm327.scanForPermanentTroubleCodes()
+        } catch {
+            throw OBDServiceError.scanFailed(underlyingError: error)
+        }
+    }
+
+    /// Retrieves the vehicle's Calibration ID (CALID) - Mode 09 PID 04.
+    public func getVehicleCalibrationID() async throws -> String? {
+        return try await elm327.getCalibrationID()
+    }
+
+    /// Retrieves the vehicle's Calibration Verification Number (CVN) - Mode 09 PID 06.
+    public func getCVN() async throws -> String? {
+        return try await elm327.getCVN()
+    }
+
+    /// Retrieves freeze frame data for a specific PID - Mode 02.
+    public func getFreezeFrame(for pid: OBDCommand.Mode1) async throws -> MeasurementResult? {
+        return try await elm327.requestFreezeFrame(for: pid)
     }
 
     /// Retrieves the monitor status since the Diagnostic Trouble Codes (DTCs) were last cleared.
@@ -431,7 +466,7 @@ public struct MeasurementResult: Equatable {
     }
 }
 
-public extension MeasurementResult {
+internal extension MeasurementResult {
 	static func mock(_ value: Double = 125, _ suffix: String = "km/h") -> MeasurementResult {
 		.init(value: value, unit: .init(symbol: suffix))
 	}
