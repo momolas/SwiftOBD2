@@ -40,7 +40,9 @@ public enum OBDCommand: Codable, Hashable, Comparable, Identifiable {
     case mode1(Mode1)
     case mode3(Mode3)
     case mode6(Mode6)
+    case mode7(Mode7)
     case mode9(Mode9)
+    case modeA(ModeA)
     case protocols(Protocols)
     case custom(CustomPID)
 	
@@ -57,6 +59,12 @@ public enum OBDCommand: Codable, Hashable, Comparable, Identifiable {
         case let .mode6(command):
             return command
         case let .mode3(command):
+            return command
+        case let .mode7(command):
+            return command
+        case let .mode9(command):
+            return command
+        case let .modeA(command):
             return command
         case let .protocols(command):
             return command
@@ -252,6 +260,54 @@ public enum OBDCommand: Codable, Hashable, Comparable, Identifiable {
         }
     }
 
+    public enum Mode7: CaseIterable, Codable, Comparable, PID {
+        case GET_PENDING_DTC
+
+        public var command: String {
+            switch self {
+            case .GET_PENDING_DTC: return "07"
+            }
+        }
+
+        public var description: String {
+            switch self {
+            case .GET_PENDING_DTC: return "Get Pending DTCs"
+            }
+        }
+
+        public var bytes: Int {
+            return 0
+        }
+
+        public func decode(data: Data) -> Result<DecodeResult, DecodeError> {
+            return Decoders.dtc.getDecoder()!.decode(data: data)
+        }
+    }
+
+    public enum ModeA: CaseIterable, Codable, Comparable, PID {
+        case GET_PERMANENT_DTC
+
+        public var command: String {
+            switch self {
+            case .GET_PERMANENT_DTC: return "0A"
+            }
+        }
+
+        public var description: String {
+            switch self {
+            case .GET_PERMANENT_DTC: return "Get Permanent DTCs"
+            }
+        }
+
+        public var bytes: Int {
+            return 0
+        }
+
+        public func decode(data: Data) -> Result<DecodeResult, DecodeError> {
+            return Decoders.dtc.getDecoder()!.decode(data: data)
+        }
+    }
+
     public enum Mode6: CaseIterable, Codable, Comparable, PID {
         case MIDS_A
         case MONITOR_O2_B1S1
@@ -444,8 +500,16 @@ public enum OBDCommand: Codable, Hashable, Comparable, Identifiable {
             commands.append(.mode6(command))
         }
 
+        for command in OBDCommand.Mode7.allCases {
+            commands.append(.mode7(command))
+        }
+
         for command in OBDCommand.Mode9.allCases {
             commands.append(.mode9(command))
+        }
+
+        for command in OBDCommand.ModeA.allCases {
+            commands.append(.modeA(command))
         }
         for command in OBDCommand.Protocols.allCases {
             commands.append(.protocols(command))

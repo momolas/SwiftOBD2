@@ -13,7 +13,6 @@
 /// * Retrieves vehicle information (e.g., VIN)
 /// * Monitors vehicle status and retrieves diagnostic trouble codes (DTCs)
 
-import Combine
 import CoreBluetooth
 import Foundation
 import OSLog
@@ -56,12 +55,23 @@ class ELM327 {
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.example.com", category: "ELM327")
     private var comm: CommProtocol
 
-    private var cancellables = Set<AnyCancellable>()
+    var connectionState: ConnectionState = .disconnected {
+        didSet {
+            continuation?.yield(connectionState)
+        }
+    }
 
-    @Published var connectionState: ConnectionState = .disconnected
-    var connectionStatePublisher: Published<ConnectionState>.Publisher { $connectionState }
+    private var continuation: AsyncStream<ConnectionState>.Continuation?
+    var connectionStateStream: AsyncStream<ConnectionState> {
+        AsyncStream { continuation in
+            self.continuation = continuation
+            continuation.yield(connectionState)
+        }
+    }
 
     private var r100: [String] = []
+
+    private var connectionStateTask: Task<Void, Never>?
 
     init(comm: CommProtocol) {
         self.comm = comm
@@ -69,9 +79,15 @@ class ELM327 {
     }
 
     private func setupConnectionStateSubscriber() {
-        comm.connectionStatePublisher
-            .receive(on: DispatchQueue.main)
-            .assign(to: &$connectionState)
+        connectionStateTask?.cancel()
+        connectionStateTask = Task { [weak self] in
+            guard let self = self else { return }
+            for await state in self.comm.connectionStateStream {
+                await MainActor.run {
+                    self.connectionState = state
+                }
+            }
+        }
     }
 
     // MARK: - Adapter and Vehicle Setup
@@ -140,7 +156,7 @@ class ELM327 {
     /// - Throws: Various setup-related errors.
     private func detectProtocolAutomatically() async throws -> PROTOCOL {
         _ = try await okResponse("ATSP0")
-        try? await Task.sleep(nanoseconds: 1_000_000_000)
+        try? await Task.sleep(for: .seconds(1))
         _ = try await sendCommand("0100")
 
         let obdProtocolNumber = try await sendCommand("ATDPN")
@@ -208,7 +224,7 @@ class ELM327 {
             _ = try await okResponse("ATE0") // Echo off
             _ = try await okResponse("ATL0") // Linefeeds off
             _ = try await okResponse("ATS0") // Spaces off
-            _ = try await okResponse("ATH1") // Headers off
+            _ = try await okResponse("ATH1") // Headers on
             _ = try await okResponse("ATSP0") // Set protocol to automatic
             logger.info("ELM327 adapter initialized successfully.")
         } catch {
@@ -254,10 +270,23 @@ class ELM327 {
     }
 
     func scanForTroubleCodes() async throws -> [ECUID: [TroubleCode]] {
+        logger.info("Scanning for trouble codes (Mode 03)")
+        return try await scanForCodes(command: .mode3(.GET_DTC))
+    }
+
+    func scanForPendingTroubleCodes() async throws -> [ECUID: [TroubleCode]] {
+        logger.info("Scanning for pending trouble codes (Mode 07)")
+        return try await scanForCodes(command: .mode7(.GET_PENDING_DTC))
+    }
+
+    func scanForPermanentTroubleCodes() async throws -> [ECUID: [TroubleCode]] {
+        logger.info("Scanning for permanent trouble codes (Mode 0A)")
+        return try await scanForCodes(command: .modeA(.GET_PERMANENT_DTC))
+    }
+
+    private func scanForCodes(command: OBDCommand) async throws -> [ECUID: [TroubleCode]] {
         var dtcs: [ECUID: [TroubleCode]] = [:]
-        logger.info("Scanning for trouble codes")
-        let dtcCommand = OBDCommand.Mode3.GET_DTC
-        let dtcResponse = try await sendCommand(dtcCommand.properties.command)
+        let dtcResponse = try await sendCommand(command.properties.command)
 
         guard let messages = try canProtocol?.parse(dtcResponse) else {
             return [:]
@@ -266,7 +295,7 @@ class ELM327 {
             guard let dtcData = message.data else {
                 continue
             }
-            let decodedResult = dtcCommand.properties.decode(data: dtcData)
+            let decodedResult = command.properties.decode(data: dtcData)
 
             let ecuId = message.ecu
             switch decodedResult {
