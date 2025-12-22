@@ -10,7 +10,7 @@ public struct VehicleDetails: Codable {
 
 public struct VINDecoder {
     public static func decode(vin: String) -> VehicleDetails {
-        let cleanedVIN = vin.uppercased().replacingOccurrences(of: " ", with: "")
+        let cleanedVIN = vin.uppercased().replacing(" ", with: "")
         guard cleanedVIN.count == 17 else {
             return VehicleDetails(vin: vin, make: "Invalid VIN", year: nil, country: "Unknown", region: "Unknown")
         }
