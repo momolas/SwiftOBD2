@@ -49,7 +49,7 @@ class BLEMessageProcessor: @unchecked Sendable {
            return
        }
 
-       if let firstLine = lines.first, firstLine.uppercased().contains("NO DATA") {
+       if let firstLine = lines.first, firstLine.localizedCaseInsensitiveContains("NO DATA") {
            completion(nil, BLEManagerError.noData)
        } else if lines.isEmpty {
            completion(nil, BLEManagerError.noData)
