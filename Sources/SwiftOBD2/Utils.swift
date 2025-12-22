@@ -1,4 +1,5 @@
 import Foundation
+import CoreBluetooth
 
 public enum PROTOCOL: String, CaseIterable, Codable, Hashable {
     case ISO_15765_4_11bit_500k = "6"
@@ -34,7 +35,7 @@ public enum PROTOCOL: String, CaseIterable, Codable, Hashable {
     }
 }
 
-let protocols: [PROTOCOL: CANProtocol] = [
+nonisolated(unsafe) let protocols: [PROTOCOL: CANProtocol] = [
     .ISO_15765_4_11bit_500k: ISO_15765_4_11bit_500k(),
     .ISO_15765_4_29bit_500k: ISO_15765_4_29bit_500k(),
     .ISO_15765_4_11bit_250K: ISO_15765_4_11bit_250K(),
@@ -55,3 +56,9 @@ extension Array {
         }
     }
 }
+
+extension CBPeripheral: @unchecked Sendable {}
+extension CBCentralManager: @unchecked Sendable {}
+extension BLECharacteristicHandler: @unchecked Sendable {}
+extension CBService: @unchecked Sendable {}
+extension CBCharacteristic: @unchecked Sendable {}

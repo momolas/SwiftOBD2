@@ -31,7 +31,7 @@ class BLEMessageProcessor: @unchecked Sendable {
     private func parseResponse(from string: String) -> [String] {
         // Split by newlines and clean up
         let lines = string
-            .replacingOccurrences(of: ">", with: "") // Remove prompt marker
+            .replacing(">", with: "") // Remove prompt marker
             .components(separatedBy: .newlines)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
@@ -49,7 +49,7 @@ class BLEMessageProcessor: @unchecked Sendable {
            return
        }
 
-       if let firstLine = lines.first, firstLine.uppercased().contains("NO DATA") {
+       if let firstLine = lines.first, firstLine.localizedCaseInsensitiveContains("NO DATA") {
            completion(nil, BLEManagerError.noData)
        } else if lines.isEmpty {
            completion(nil, BLEManagerError.noData)

@@ -106,7 +106,7 @@ public class OBDLogger: @unchecked Sendable {
             message += " | Data: \(data)"
         }
         if let duration = duration {
-            message += " | Duration: \(String(format: "%.3f", duration))s"
+            message += " | Duration: \(duration.formatted(.number.precision(.fractionLength(3))))s"
         }
         info(message, category: .communication)
     }
@@ -124,7 +124,7 @@ public class OBDLogger: @unchecked Sendable {
     /// Log performance metrics
     public func logPerformance(_ operation: String, duration: TimeInterval, success: Bool = true) {
         let status = success ? "✓" : "✗"
-        info("\(status) \(operation): \(String(format: "%.3f", duration))s", category: .performance)
+        info("\(status) \(operation): \(duration.formatted(.number.precision(.fractionLength(3))))s", category: .performance)
     }
     
     /// Log Bluetooth specific events (deprecated - use direct obdInfo/obdDebug instead)

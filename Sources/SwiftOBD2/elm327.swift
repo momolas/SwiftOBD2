@@ -197,7 +197,7 @@ class ELM327 {
         let response = try? await sendCommand("0100", retries: 3)
 
         if let response = response,
-           response.contains(where: { $0.range(of: #"41\s*00"#, options: .regularExpression) != nil }) {
+           response.contains(where: { $0.contains(/41\s*00/) }) {
             logger.info("Protocol \(obdProtocol.description) is valid.")
             r100 = response
             return true
@@ -295,7 +295,7 @@ class ELM327 {
             guard let dtcData = message.data else {
                 continue
             }
-            let decodedResult = command.properties.decode(data: dtcData)
+            let decodedResult = command.properties.decode(data: dtcData, unit: .metric)
 
             let ecuId = message.ecu
             switch decodedResult {
@@ -312,7 +312,7 @@ class ELM327 {
 
     func clearTroubleCodes() async throws {
         let command = OBDCommand.Mode4.CLEAR_DTC
-        _ = try await sendCommand(command.properties.command)
+        _ = try await sendCommand(command.command)
     }
 
     func scanForPeripherals() -> AsyncStream<Device> {
@@ -334,7 +334,7 @@ class ELM327 {
         guard let data = try canProtocol?.parse(response).first?.data else {
             throw DecodeError.noData
         }
-        return try command.properties.decode(data: data).get()
+        return try command.properties.decode(data: data, unit: .metric).get()
     }
 
     func requestVin() async -> String? {
@@ -349,10 +349,7 @@ class ELM327 {
             return nil
         }
 
-        vinString = vinString
-            .replacingOccurrences(of: "[^a-zA-Z0-9]",
-                                  with: "",
-                                  options: String.CompareOptions.regularExpression)
+        vinString = vinString.replacing(/[^a-zA-Z0-9]/, with: "")
 
         return vinString
     }
@@ -362,7 +359,7 @@ class ELM327 {
         let response = try await sendCommand(command.properties.command)
         guard let data = try canProtocol?.parse(response).first?.data else { return nil }
 
-        let result = command.properties.decode(data: data)
+        let result = command.properties.decode(data: data, unit: .metric)
         switch result {
         case .success(let decodeResult):
             if case .stringResult(let str) = decodeResult {
@@ -379,7 +376,7 @@ class ELM327 {
         let response = try await sendCommand(command.properties.command)
         guard let data = try canProtocol?.parse(response).first?.data else { return nil }
 
-        let result = command.properties.decode(data: data)
+        let result = command.properties.decode(data: data, unit: .metric)
         switch result {
         case .success(let decodeResult):
             if case .stringResult(let str) = decodeResult {
@@ -396,7 +393,7 @@ class ELM327 {
         let response = try await sendCommand(command.properties.command)
         guard let data = try canProtocol?.parse(response).first?.data else { return nil }
 
-        let result = command.properties.decode(data: data)
+        let result = command.properties.decode(data: data, unit: .metric)
         switch result {
         case .success(let decodeResult):
             return decodeResult.measurementResult
