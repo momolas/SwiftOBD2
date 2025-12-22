@@ -689,10 +689,7 @@ struct StringDecoder: Decoder {
             return .failure(.decodingFailed(reason: "Failed to decode string"))
         }
 
-        string = string
-            .replacingOccurrences(of: "[^a-zA-Z0-9]",
-                                  with: "",
-                                  options: .regularExpression)
+        string = string.replacing(/[^a-zA-Z0-9]/, with: "")
 
         return .success(.stringResult(string))
     }

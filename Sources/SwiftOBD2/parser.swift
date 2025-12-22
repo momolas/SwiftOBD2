@@ -41,7 +41,7 @@ public struct CANParser {
 
     public init(_ lines: [String], idBits: Int) throws {
         let obdLines = lines
-            .map { $0.replacingOccurrences(of: " ", with: "") }
+            .map { $0.replacing(" ", with: "") }
             .filter(\.isHex)
 
         frames = try obdLines.compactMap { try Frame(raw: $0, idBits: idBits) }

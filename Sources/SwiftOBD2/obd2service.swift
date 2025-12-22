@@ -2,38 +2,6 @@ import CoreBluetooth
 import Foundation
 import Observation
 
-public enum ConnectionType: String, CaseIterable {
-    case bluetooth = "Bluetooth"
-    case wifi = "Wi-Fi"
-    case demo = "Demo"
-}
-
-public protocol Device {
-    var id: UUID { get }
-    var name: String { get }
-}
-
-public protocol CommProtocol {
-    var connectionStateStream: AsyncStream<ConnectionState> { get }
-    func connectAsync(timeout: TimeInterval, device: Device?) async throws
-    func sendCommand(_ command: String, retries: Int) async throws -> [String]
-    func disconnectPeripheral()
-    func scanForPeripherals() -> AsyncStream<Device>
-}
-
-public final class ConfigurationService: Sendable {
-    static let shared = ConfigurationService()
-    var connectionType: ConnectionType {
-        get {
-            let rawValue = UserDefaults.standard.string(forKey: "connectionType") ?? "Bluetooth"
-            return ConnectionType(rawValue: rawValue) ?? .bluetooth
-        }
-        set {
-            UserDefaults.standard.set(newValue.rawValue, forKey: "connectionType")
-        }
-    }
-}
-
 /// A class that provides an interface to the ELM327 OBD2 adapter and the vehicle.
 ///
 /// - Key Responsibilities:
@@ -444,59 +412,3 @@ public class OBDService {
 
 
 }
-
-/// Represents the errors that can occur within the `OBDService`.
-public enum OBDServiceError: Error {
-    /// No suitable OBD-II adapter was found during a scan.
-    case noAdapterFound
-    /// An operation was attempted before a connection to the vehicle was successfully established.
-    case notConnectedToVehicle
-    /// The connection attempt to the OBD-II adapter failed.
-    case adapterConnectionFailed(underlyingError: Error)
-    /// A scan for Diagnostic Trouble Codes (DTCs) failed.
-    case scanFailed(underlyingError: Error)
-    /// An attempt to clear Diagnostic Trouble Codes (DTCs) failed.
-    case clearFailed(underlyingError: Error)
-    /// A specific OBD-II command failed to execute.
-    case commandFailed(command: String, error: Error)
-}
-
-/// A structure representing the result of a measurement from an OBD-II sensor.
-public struct MeasurementResult: Equatable {
-    /// The numerical value of the measurement.
-    public var value: Double
-    /// The unit of measurement (e.g., kPa, °C, km/h).
-    public let unit: Unit
-
-    /// Initializes a new `MeasurementResult`.
-    /// - Parameters:
-    ///   - value: The numerical value of the measurement.
-    ///   - unit: The unit of the measurement.
-    public init(value: Double, unit: Unit) {
-        self.value = value
-        self.unit = unit
-    }
-}
-
-internal extension MeasurementResult {
-	static func mock(_ value: Double = 125, _ suffix: String = "km/h") -> MeasurementResult {
-		.init(value: value, unit: .init(symbol: suffix))
-	}
-}
-
-actor PIDListManager {
-    private var pidList: [OBDCommand] = []
-
-    func getPIDs() -> [OBDCommand] {
-        return pidList
-    }
-
-    func addPID(_ pid: OBDCommand) {
-        pidList.append(pid)
-    }
-
-    func removePID(_ pid: OBDCommand) {
-        pidList.removeAll { $0 == pid }
-    }
-}
-
