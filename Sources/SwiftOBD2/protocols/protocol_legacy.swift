@@ -19,7 +19,7 @@ public struct LegacyParser {
 
     public init(_ lines: [String]) throws {
         let obdLines = lines
-            .compactMap { $0.replacingOccurrences(of: " ", with: "") }
+            .compactMap { $0.replacing(" ", with: "") }
             .filter(\.isHex)
 
         frames = try obdLines.compactMap {
