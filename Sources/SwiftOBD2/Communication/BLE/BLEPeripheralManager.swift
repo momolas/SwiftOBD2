@@ -21,7 +21,7 @@ class BLEPeripheralManager: NSObject, @unchecked Sendable {
     weak var delegate: BLEPeripheralManagerDelegate?
     private var connectionCompletion: ((CBPeripheral?, Error?) -> Void)?
 
-    init(characteristicHandler: BLECharacteristicHandler) {
+    nonisolated init(characteristicHandler: BLECharacteristicHandler) {
         self.characteristicHandler = characteristicHandler
         super.init()
     }

@@ -601,7 +601,7 @@ public enum OBDCommand: Codable, Hashable, Comparable, Identifiable {
         }
     }
 
-    static let pidGetters: [OBDCommand] = {
+    nonisolated(unsafe) static let pidGetters: [OBDCommand] = {
         var getters: [OBDCommand] = []
         for command in OBDCommand.Mode1.allCases {
             if case .pid = command.decoder {
@@ -623,7 +623,7 @@ public enum OBDCommand: Codable, Hashable, Comparable, Identifiable {
         return getters
     }()
 
-    static public let allCommands: [OBDCommand] = {
+    nonisolated(unsafe) static public let allCommands: [OBDCommand] = {
         var commands: [OBDCommand] = []
         for command in OBDCommand.General.allCases {
             commands.append(.general(command))

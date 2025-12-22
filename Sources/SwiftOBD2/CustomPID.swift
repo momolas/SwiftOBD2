@@ -22,7 +22,11 @@ public protocol PID {
 }
 
 /// A structure for defining a custom, non-standard OBD-II PID.
-public struct CustomPID: PID, Codable, Hashable {
+public struct CustomPID: PID, Codable, Hashable, Comparable {
+    public static func < (lhs: CustomPID, rhs: CustomPID) -> Bool {
+        lhs.command < rhs.command
+    }
+
     /// The OBD-II command string for the PID.
     public let command: String
     /// A human-readable description of the PID.

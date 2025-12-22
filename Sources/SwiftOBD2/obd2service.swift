@@ -242,7 +242,7 @@ public class OBDService {
             guard let responseData = try elm327.canProtocol?.parse(response).first?.data else {
                 throw DecodeError.noData
             }
-            return try command.properties.decode(data: responseData.dropFirst()).get()
+            return try command.properties.decode(data: responseData.dropFirst(), unit: .metric).get()
         } catch {
             throw OBDServiceError.commandFailed(command: command.properties.command, error: error)
         }

@@ -149,7 +149,7 @@ func bytesToInt(_ data: Data) -> Int {
     return data.reduce(0) { $0 * 256 + Int($1) }
 }
 
-private let uasIDS: [UInt8: UAS] = {
+nonisolated(unsafe) private let uasIDS: [UInt8: UAS] = {
     return [
     // Unsigned
     0x01: UAS(signed: false, scale: 1.0, unit: Unit.count),
@@ -236,7 +236,7 @@ public enum DecodeResult {
     case measurementMonitor(Monitor)
 }
 
-public enum Decoders: Equatable, Encodable {
+public enum Decoders: Equatable, Codable, Hashable {
     case pid
     case status
     case singleDTC
