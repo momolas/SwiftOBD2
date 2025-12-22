@@ -86,12 +86,12 @@ class MOCKComm: CommProtocol {
 
                 var Totallength = 0
 
-                let ffLength = ff.replacingOccurrences(of: " ", with: "").count / 2
+                let ffLength = ff.replacing(" ", with: "").count / 2
 
                 Totallength += ffLength
 
                 var cf = Array(chunks.dropFirst())
-                Totallength += cf.joined().replacingOccurrences(of: " ", with: "").count
+                Totallength += cf.joined().replacing(" ", with: "").count
 
                 var lengthHex = String(format: "%02X", Totallength - 1)
 

@@ -5,26 +5,14 @@
 //  Created by kemo konteh on 9/30/23.
 //
 
-import Combine
 import Foundation
+import Observation
 
-public struct Vehicle: Codable, Identifiable, Equatable, Hashable {
-    public static func == (lhs: Vehicle, rhs: Vehicle) -> Bool {
-        lhs.id == rhs.id
-    }
-
-    public let id: Int
-    public var make: String
-    public var model: String
-    public var year: String
-    public var status: Status?
-    public var troubleCodes: [ECUID: [TroubleCode]]?
-    public var obdinfo: OBDInfo?
-}
-
-public class Garage: ObservableObject {
-    @Published public var garageVehicles: [Vehicle] = []
-    @Published public var currentVehicle: Vehicle? {
+@Observable
+@MainActor
+public class Garage {
+    public var garageVehicles: [Vehicle] = []
+    public var currentVehicle: Vehicle? {
         didSet {
             if let currentVehicle = currentVehicle {
                 currentVehicleId = currentVehicle.id
