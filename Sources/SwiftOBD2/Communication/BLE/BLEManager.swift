@@ -145,8 +145,10 @@ class BLEManager: NSObject, CommProtocol, BLEPeripheralManagerDelegate, CBCentra
     }
 
     func disconnectPeripheral() {
-        guard let peripheral = peripheralManager.connectedPeripheral else { return }
-        centralManager.cancelPeripheralConnection(peripheral)
+        Task { @MainActor in
+            guard let peripheral = peripheralManager.connectedPeripheral else { return }
+            centralManager.cancelPeripheralConnection(peripheral)
+        }
     }
 
     // MARK: - Central Manager Delegate Methods
@@ -157,7 +159,7 @@ class BLEManager: NSObject, CommProtocol, BLEPeripheralManagerDelegate, CBCentra
             centralManagerDidPowerOn()
         case .poweredOff:
             obdWarning("Bluetooth powered off", category: .bluetooth)
-            peripheralManager.connectedPeripheral = nil
+            Task { @MainActor in peripheralManager.connectedPeripheral = nil }
             let oldState = connectionState
             connectionState = .disconnected
             OBDLogger.shared.logConnectionChange(from: oldState, to: connectionState)
@@ -174,11 +176,14 @@ class BLEManager: NSObject, CommProtocol, BLEPeripheralManagerDelegate, CBCentra
     }
 
     func centralManagerDidPowerOn() {
-        guard let device = peripheralManager.connectedPeripheral else {
-            startScanning(BLEPeripheralScanner.supportedServices)
-            return
+        Task {
+            let device = await MainActor.run { peripheralManager.connectedPeripheral }
+            guard let device = device else {
+                startScanning(BLEPeripheralScanner.supportedServices)
+                return
+            }
+            connect(to: device)
         }
-        connect(to: device)
     }
 
     func didDiscover(_: CBCentralManager, peripheral: CBPeripheral, advertisementData: [String: Any], rssi: NSNumber) {
@@ -201,7 +206,7 @@ class BLEManager: NSObject, CommProtocol, BLEPeripheralManagerDelegate, CBCentra
 
     func didConnect(_: CBCentralManager, peripheral: CBPeripheral) {
         obdInfo("Connected to peripheral: \(peripheral.name ?? "Unnamed")", category: .bluetooth)
-        peripheralManager.setPeripheral(peripheral)
+        Task { @MainActor in peripheralManager.setPeripheral(peripheral) }
         // Note: connectionState will be set to .connectedToAdapter in peripheralManager delegate
     }
 
@@ -228,7 +233,7 @@ class BLEManager: NSObject, CommProtocol, BLEPeripheralManagerDelegate, CBCentra
     func willRestoreState(_: CBCentralManager, dict: [String: Any]) {
         if let peripherals = dict[CBCentralManagerRestoredStatePeripheralsKey] as? [CBPeripheral], let peripheral = peripherals.first {
             obdDebug("Restoring peripheral: \(peripherals[0].name ?? "Unnamed")", category: .bluetooth)
-            peripheralManager.setPeripheral(peripheral)
+            Task { @MainActor in peripheralManager.setPeripheral(peripheral) }
 
         }
     }
@@ -319,7 +324,8 @@ class BLEManager: NSObject, CommProtocol, BLEPeripheralManagerDelegate, CBCentra
     ///     `BLEManagerError.timeout` if the operation times out.
     ///     `BLEManagerError.unknownError` if an unknown error occurs.
     func sendCommand(_ command: String, retries _: Int = 3) async throws -> [String] {
-        guard let peripheral = peripheralManager.connectedPeripheral else {
+        let peripheral = await MainActor.run { peripheralManager.connectedPeripheral }
+        guard let peripheral = peripheral else {
             obdError("Missing peripheral or ECU characteristic", category: .bluetooth)
             throw BLEManagerError.missingPeripheralOrCharacteristic
         }

@@ -19,7 +19,7 @@ public struct LegacyParser {
 
     public init(_ lines: [String]) throws {
         let obdLines = lines
-            .compactMap { $0.replacingOccurrences(of: " ", with: "") }
+            .compactMap { $0.replacing(" ", with: "") }
             .filter(\.isHex)
 
         frames = try obdLines.compactMap {
@@ -164,7 +164,7 @@ public protocol MessageProtocol {
     var ecu: ECUID { get }
 }
 
-class SAE_J1850_PWM: CANProtocol {
+class SAE_J1850_PWM: CANProtocol, @unchecked Sendable {
     let elmID = "1"
     let name = "SAE J1850 PWM"
     func parse(_ lines: [String]) throws -> [MessageProtocol] {
@@ -172,7 +172,7 @@ class SAE_J1850_PWM: CANProtocol {
     }
 }
 
-class SAE_J1850_VPW: CANProtocol {
+class SAE_J1850_VPW: CANProtocol, @unchecked Sendable {
     let elmID = "2"
     let name = "SAE J1850 VPW"
     func parse(_ lines: [String]) throws -> [MessageProtocol] {
@@ -180,7 +180,7 @@ class SAE_J1850_VPW: CANProtocol {
     }
 }
 
-class ISO_9141_2: CANProtocol {
+class ISO_9141_2: CANProtocol, @unchecked Sendable {
     let elmID = "3"
     let name = "ISO 9141-2"
     func parse(_ lines: [String]) throws -> [MessageProtocol] {
@@ -188,7 +188,7 @@ class ISO_9141_2: CANProtocol {
     }
 }
 
-class ISO_14230_4_KWP_5Baud: CANProtocol {
+class ISO_14230_4_KWP_5Baud: CANProtocol, @unchecked Sendable {
     let elmID = "4"
     let name = "ISO 14230-4 KWP (5 baud init)"
     func parse(_ lines: [String]) throws -> [MessageProtocol] {
@@ -196,7 +196,7 @@ class ISO_14230_4_KWP_5Baud: CANProtocol {
     }
 }
 
-public class ISO_14230_4_KWP_Fast: CANProtocol {
+public class ISO_14230_4_KWP_Fast: CANProtocol, @unchecked Sendable {
     let elmID = "5"
     let name = "ISO 14230-4 KWP (fast init)"
     public init() {}

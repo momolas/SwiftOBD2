@@ -70,7 +70,7 @@ enum BLEScannerError: Error, LocalizedError {
 func withTimeout<R: Sendable>(
     seconds: TimeInterval,
     timeoutError: Error = BLEManagerError.timeout,
-    onTimeout: (() -> Void)? = nil,
+    onTimeout: (@Sendable () -> Void)? = nil,
     operation: @escaping @Sendable () async throws -> R
 ) async throws -> R {
     try await withThrowingTaskGroup(of: R.self) { group in

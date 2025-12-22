@@ -1,25 +1,27 @@
 import Foundation
 import OSLog
 import CoreBluetooth
-import Combine
+import Observation
 
 protocol BLEPeripheralManagerDelegate: AnyObject {
     func peripheralManager(_ manager: BLEPeripheralManager, didSetupCharacteristics peripheral: CBPeripheral)
 }
 
-class BLEPeripheralManager: NSObject, ObservableObject, @unchecked Sendable {
+@Observable
+@MainActor
+class BLEPeripheralManager: NSObject, @unchecked Sendable {
     func didWriteValue(_ peripheral: CBPeripheral, descriptor: CBDescriptor, error: (any Error)?) {
 
     }
 
-    @Published var connectedPeripheral: CBPeripheral?
+    var connectedPeripheral: CBPeripheral?
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.example.app", category: "BLEPeripheralManager")
     private let characteristicHandler: BLECharacteristicHandler
 
     weak var delegate: BLEPeripheralManagerDelegate?
     private var connectionCompletion: ((CBPeripheral?, Error?) -> Void)?
 
-    init(characteristicHandler: BLECharacteristicHandler) {
+    nonisolated init(characteristicHandler: BLECharacteristicHandler) {
         self.characteristicHandler = characteristicHandler
         super.init()
     }
@@ -37,13 +39,15 @@ class BLEPeripheralManager: NSObject, ObservableObject, @unchecked Sendable {
     func waitForCharacteristicsSetup(timeout: TimeInterval) async throws {
         try await withTimeout(seconds: timeout) { [self] in
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                self.connectionCompletion = { peripheral, error in
-                    if peripheral != nil {
-                        continuation.resume()
-                    } else if let error = error {
-                        continuation.resume(throwing: error)
-                    } else {
-                        continuation.resume(throwing: BLEManagerError.unknownError)
+                Task { @MainActor in
+                    self.connectionCompletion = { peripheral, error in
+                        if peripheral != nil {
+                            continuation.resume()
+                        } else if let error = error {
+                            continuation.resume(throwing: error)
+                        } else {
+                            continuation.resume(throwing: BLEManagerError.unknownError)
+                        }
                     }
                 }
             }
@@ -90,15 +94,15 @@ class BLEPeripheralManager: NSObject, ObservableObject, @unchecked Sendable {
 }
 
 extension BLEPeripheralManager: CBPeripheralDelegate {
-    func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
-        didDiscoverServices(peripheral, error: error)
+    nonisolated func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
+        Task { @MainActor in didDiscoverServices(peripheral, error: error) }
     }
 
-    func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
-        didDiscoverCharacteristics(peripheral, service: service, error: error)
+    nonisolated func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
+        Task { @MainActor in didDiscoverCharacteristics(peripheral, service: service, error: error) }
     }
 
-    func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
-        didUpdateValue(peripheral, characteristic: characteristic, error: error)
+    nonisolated func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
+        Task { @MainActor in didUpdateValue(peripheral, characteristic: characteristic, error: error) }
     }
 }
