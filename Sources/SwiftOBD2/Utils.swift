@@ -59,3 +59,4 @@ extension Array {
 
 extension CBPeripheral: @unchecked Sendable {}
 extension CBCentralManager: @unchecked Sendable {}
+extension BLECharacteristicHandler: @unchecked Sendable {}

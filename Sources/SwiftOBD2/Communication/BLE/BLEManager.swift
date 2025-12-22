@@ -145,8 +145,10 @@ class BLEManager: NSObject, CommProtocol, BLEPeripheralManagerDelegate, CBCentra
     }
 
     func disconnectPeripheral() {
-        guard let peripheral = peripheralManager.connectedPeripheral else { return }
-        centralManager.cancelPeripheralConnection(peripheral)
+        Task { @MainActor in
+            guard let peripheral = peripheralManager.connectedPeripheral else { return }
+            centralManager.cancelPeripheralConnection(peripheral)
+        }
     }
 
     // MARK: - Central Manager Delegate Methods
