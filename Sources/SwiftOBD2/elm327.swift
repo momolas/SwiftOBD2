@@ -334,7 +334,7 @@ class ELM327 {
         guard let data = try canProtocol?.parse(response).first?.data else {
             throw DecodeError.noData
         }
-        return try command.properties.decode(data: data).get()
+        return try command.properties.decode(data: data, unit: .metric).get()
     }
 
     func requestVin() async -> String? {
